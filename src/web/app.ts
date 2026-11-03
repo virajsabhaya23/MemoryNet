@@ -1,0 +1,374 @@
+import { randomBytes, timingSafeEqual, createHash } from "node:crypto";
+import { readFileSync } from "node:fs";
+import { findPrincipal } from "../access.ts";
+import { createAgentContextHandler, type AgentBindingLoader } from "../agent-context/http.ts";
+import { AGENT_CONTEXT_PATH } from "../agent-context/contract.ts";
+import type { MemoryNetContext } from "../context.ts";
+import type { DecisionGuardWebRuntime } from "../decision-guard/runtime.ts";
+import { MemoryNetError, ValidationError, type ErrorCode } from "../errors.ts";
+import {
+  errorPage,
+  isTheme,
+  redirect,
+  SECURITY_HEADERS,
+  themeCookie,
+  type RequestContext,
+  type Route,
+  type RouteAccess,
+  type WebRequest,
+  type WebResponse,
+} from "./kit.ts";
+import type { CheckoutCatalog } from "../repository-checkouts.ts";
+import { repositoryRoutes } from "./routes/repository.ts";
+import { captureRoutes } from "./routes/capture.ts";
+import { definitionRoutes } from "./routes/definitions.ts";
+import { createDecisionGuardRoutes } from "./routes/decision-guard.ts";
+import { knowledgeRoutes } from "./routes/knowledge.ts";
+import { memoryRoutes } from "./routes/memories.ts";
+import { myNetworkRoutes } from "./routes/my-network.ts";
+import { networkRoutes } from "./routes/network.ts";
+import { organizationRoutes } from "./routes/organizations.ts";
+import { promptRoutes } from "./routes/prompt.ts";
+import { reviewRoutes } from "./routes/review.ts";
+import { searchRoutes } from "./routes/search.ts";
+import { workRoutes } from "./routes/work.ts";
+import { systemRoutes } from "./routes/system.ts";
+import {
+  clearedSessionCookie,
+  readCookie,
+  SESSION_COOKIE,
+  sessionCookie,
+  SessionStore,
+} from "./session.ts";
+
+export type App = (request: WebRequest) => Promise<WebResponse>;
+
+export interface AppOptions {
+  /** The loopback port the app answers on; requests naming another host are refused. */
+  port: number;
+  sessions?: SessionStore;
+  checkouts?: CheckoutCatalog;
+  prototype?: {principalId:string;login:string;accessKeyHash:string};
+  decisionGuard?: DecisionGuardWebRuntime;
+  /** Local operator binding, reloaded on every request; never accepts a browser identity. */
+  agentBinding?: AgentBindingLoader;
+}
+
+const STATUS_BY_CODE: Readonly<Record<ErrorCode, number>> = {
+  validation_failed: 400,
+  forbidden: 403,
+  not_found: 404,
+  conflict: 409,
+  unavailable: 503,
+};
+
+const STYLESHEET = ["fonts.css", "style.css", "cobalt.css"]
+  .map((name) => readFileSync(new URL(`./assets/${name}`, import.meta.url), "utf8"))
+  .join("\n");
+
+const BRAND_MARK = readFileSync(
+  new URL("./assets/brand/mark.svg", import.meta.url), "utf8",
+);
+const ICON = readFileSync(
+  new URL("./assets/brand/icon.svg", import.meta.url), "utf8",
+);
+const FONTS = new Map([
+  "geist-variable.woff2", "familjen-grotesk-latin-variable.woff2",
+  "ibm-plex-sans-latin-variable.woff2", "jetbrains-mono-latin-variable.woff2",
+].map(name => [`/assets/fonts/${name}`, readFileSync(new URL(`./assets/fonts/${name}`, import.meta.url))]));
+
+// Only the network and prompt anatomy pages load these; they read what the page embeds and fetch nothing.
+const SCRIPTS: ReadonlyMap<string, string> = new Map(
+  [
+    "network.js",
+    "icons.js",
+    "graph-engine.js",
+    "network-view.js",
+    "prompt.js",
+    "prompt-view.js",
+    "my-network.js",
+    "my-network-view.js",
+  ].map((name) => [
+    `/assets/${name}`,
+    readFileSync(new URL(`./assets/${name}`, import.meta.url), "utf8"),
+  ]),
+);
+
+function sameToken(given: string | null, expected: string): boolean {
+  if (given === null || expected === "") return false;
+  const a = Buffer.from(given);
+  const b = Buffer.from(expected);
+  return a.length === b.length && timingSafeEqual(a, b);
+}
+
+function plainText(status: number, text: string): WebResponse {
+  return {
+    status,
+    headers: {
+      ...SECURITY_HEADERS,
+      "Content-Type": "text/plain; charset=utf-8",
+    },
+    body: text,
+  };
+}
+
+function withCookie(response: WebResponse, cookie: string): WebResponse {
+  return {
+    ...response,
+    headers: { ...response.headers, "Set-Cookie": cookie },
+  };
+}
+
+/** The page the form came from, on this app only; never another site. */
+function returnPath(rc: RequestContext): string {
+  const referer = rc.req.headers.referer;
+  if (!referer?.startsWith(`${rc.origin}/`)) return "/";
+  let url: URL;
+  try {
+    url = new URL(referer);
+  } catch {
+    return "/";
+  }
+  if (url.origin !== rc.origin || url.pathname.startsWith("//")) return "/";
+  url.searchParams.delete("done");
+  const query = url.searchParams.toString();
+  return query === "" ? url.pathname : `${url.pathname}?${query}`;
+}
+
+function match(
+  routes: readonly Route[],
+  request: WebRequest,
+): { route: Route; params: Record<string, string> } | null {
+  for (const route of routes) {
+    if (route.method !== request.method) continue;
+    const found = route.pattern.exec(request.path);
+    if (!found) continue;
+    const params: Record<string, string> = {};
+    try {
+      for (const [name, value] of Object.entries(found.groups ?? {})) {
+        params[name] = decodeURIComponent(value);
+      }
+    } catch {
+      return null;
+    }
+    return { route, params };
+  }
+  return null;
+}
+
+/**
+ * The local test app as a plain request handler, so tests need no network port.
+ * Every form must come from this app's own pages: same origin, plus a token tied to
+ * the signed-in session (or to this app run, for the System page).
+ */
+export function createApp(ctx: MemoryNetContext, options: AppOptions): App {
+  const hosts = new Set([
+    `localhost:${options.port}`,
+    `127.0.0.1:${options.port}`,
+  ]);
+  const sessions = options.sessions ?? new SessionStore();
+  const systemToken = randomBytes(32).toString("base64url");
+  let loginFailures = 0, failureWindow = Date.now();
+  if(options.prototype && !/^[a-f0-9]{64}$/.test(options.prototype.accessKeyHash)) throw new Error("Prototype authentication needs a valid access-key hash");
+  const agentContext = options.agentBinding ? createAgentContextHandler(ctx, options.agentBinding) : null;
+
+  async function signIn(rc: RequestContext): Promise<WebResponse> {
+    let principal;
+    if(options.prototype){
+      if(Date.now()-failureWindow>60_000){loginFailures=0;failureWindow=Date.now();}
+      if(loginFailures>=5)return errorPage(rc,429,"Too many sign-in attempts. Try again in one minute.");
+      const supplied=rc.form.get("accessKey")??"";
+      const hash=createHash("sha256").update(supplied).digest("hex");
+      if(!sameToken(rc.form.get("_login"),systemToken)||!sameToken(hash,options.prototype.accessKeyHash)){
+        loginFailures++;return errorPage(rc,403,"The access key is not valid.");
+      }
+      principal=await findPrincipal(rc.ctx.db,options.prototype.principalId);
+      loginFailures=0;
+    }else{
+      principal=await findPrincipal(rc.ctx.db,rc.form.get("principalId")??"").catch(()=>null);
+    }
+    if(!principal)throw new ValidationError("Choose a person or agent from the list");
+    if (rc.session) sessions.delete(rc.session.token);
+    const session = sessions.create(principal.id);
+    return withCookie(redirect("/", "signed-in"), sessionCookie(session.token));
+  }
+
+  async function signOut(rc: RequestContext): Promise<WebResponse> {
+    if (rc.session) sessions.delete(rc.session.token);
+    return withCookie(redirect("/"), clearedSessionCookie());
+  }
+
+  async function setTheme(rc: RequestContext): Promise<WebResponse> {
+    const theme = rc.form.get("theme");
+    if (!isTheme(theme))
+      throw new ValidationError("Choose Auto, Light, or Dark");
+    return withCookie(redirect(returnPath(rc)), themeCookie(theme));
+  }
+
+  const routes: readonly Route[] = [
+    {
+      method: "POST",
+      pattern: /^\/sign-in$/,
+      access: "public",
+      handle: signIn,
+    },
+    {
+      method: "POST",
+      pattern: /^\/sign-out$/,
+      access: "user",
+      handle: signOut,
+    },
+    {
+      method: "POST",
+      pattern: /^\/preferences\/theme$/,
+      access: "public",
+      handle: setTheme,
+    },
+    ...organizationRoutes,
+    ...repositoryRoutes,
+    ...knowledgeRoutes,
+    ...searchRoutes,
+    ...workRoutes,
+    ...memoryRoutes,
+    ...reviewRoutes,
+    ...definitionRoutes,
+    ...promptRoutes,
+    ...myNetworkRoutes,
+    ...networkRoutes,
+    ...systemRoutes,
+    ...captureRoutes,
+    ...(options.decisionGuard ? createDecisionGuardRoutes(options.decisionGuard) : []),
+  ];
+
+  function refusePost(rc: RequestContext, access: RouteAccess): string | null {
+    const origin = rc.req.headers.origin;
+    const fetchSite = rc.req.headers["sec-fetch-site"];
+    const sameOrigin =
+      origin === undefined ? fetchSite === "same-origin" : origin === rc.origin;
+    if (!sameOrigin) return "Forms must be sent from MemoryNet's own pages.";
+    if (
+      access === "user" &&
+      !sameToken(rc.form.get("_csrf"), rc.session?.csrfToken ?? "")
+    ) {
+      return "This form has expired. Reload the page and try again.";
+    }
+    if (
+      access === "system" &&
+      !sameToken(rc.form.get("_system"), systemToken)
+    ) {
+      return "This System form has expired. Reload the System page and try again.";
+    }
+    return null;
+  }
+
+  return async function handle(request: WebRequest): Promise<WebResponse> {
+    const host = request.headers.host ?? "";
+    if (!hosts.has(host)) {
+      return plainText(421, "MemoryNet only answers on localhost.");
+    }
+    if (request.path === AGENT_CONTEXT_PATH) {
+      if (!agentContext) return plainText(404, "Agent context is not configured.");
+      return agentContext(request);
+    }
+    if (
+      request.method === "GET" &&
+      (request.path === "/favicon.ico" ||
+        request.path === "/assets/icon.svg" ||
+        request.path === "/assets/brand/icon.svg" ||
+        request.path === "/assets/brand/mark.svg")
+    ) {
+      return {
+        status: 200,
+        headers: {
+          ...SECURITY_HEADERS,
+          "Content-Type": "image/svg+xml",
+          "Cache-Control": "max-age=86400",
+        },
+        body: request.path === "/assets/brand/mark.svg" ? BRAND_MARK : ICON,
+      };
+    }
+    if (
+      request.method === "GET" &&
+      FONTS.has(request.path)
+    ) {
+      return {
+        status: 200,
+        headers: {
+          ...SECURITY_HEADERS,
+          "Content-Type": "font/woff2",
+          "Content-Length": String(FONTS.get(request.path)!.byteLength),
+          "Cache-Control": "max-age=86400",
+        },
+        body: "",
+        binaryBody: FONTS.get(request.path)!,
+      };
+    }
+    if (request.method === "GET" && request.path === "/assets/style.css") {
+      return {
+        status: 200,
+        headers: {
+          ...SECURITY_HEADERS,
+          "Content-Type": "text/css; charset=utf-8",
+        },
+        body: STYLESHEET,
+      };
+    }
+    const script =
+      request.method === "GET" ? SCRIPTS.get(request.path) : undefined;
+    if (script !== undefined) {
+      return {
+        status: 200,
+        headers: {
+          ...SECURITY_HEADERS,
+          "Content-Type": "text/javascript; charset=utf-8",
+        },
+        body: script,
+      };
+    }
+    const session = sessions.find(
+      readCookie(request.headers.cookie, SESSION_COOKIE),
+    );
+    const user = session
+      ? await findPrincipal(ctx.db, session.principalId)
+      : null;
+    const rc: RequestContext = {
+      ctx,
+      req: request,
+      params: {},
+      form: new URLSearchParams(request.method === "POST" ? request.body : ""),
+      session: user ? session : null,
+      user,
+      systemToken,
+      origin: `http://${host}`,
+      decisionGuardAvailable: options.decisionGuard !== undefined,
+      checkouts:options.checkouts,
+      prototype:options.prototype?{principalId:options.prototype.principalId,login:options.prototype.login}:undefined,
+    };
+    try {
+      if(options.prototype && /^\/system(?:\/|$)/.test(request.path)) return errorPage(rc,404,"This test-only feature is disabled in the prototype.");
+      const found = match(routes, request);
+      if (!found)
+        return errorPage(rc, 404, "There is no page at this address.");
+      if (request.method === "POST") {
+        const refusal = refusePost(rc, found.route.access);
+        if (refusal) return errorPage(rc, 403, refusal);
+      }
+      if (found.route.access === "user" && !rc.user) {
+        return request.method === "GET"
+          ? redirect("/")
+          : errorPage(rc, 403, "Choose who you are first.");
+      }
+      return await found.route.handle({ ...rc, params: found.params });
+    } catch (error) {
+      if (error instanceof MemoryNetError) {
+        return errorPage(rc, STATUS_BY_CODE[error.code], error.message);
+      }
+      console.error(error);
+      return errorPage(
+        rc,
+        500,
+        "Something went wrong. The terminal running the app shows the details.",
+      );
+    }
+  };
+}

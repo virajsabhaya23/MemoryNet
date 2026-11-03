@@ -1,0 +1,51 @@
+{
+    "name": "memorynet",
+    "version": "0.1.0",
+    "private": true,
+    "description": "Reviewed engineering decisions with source evidence, version history, a local web app, and scoped read-only MCP context.",
+    "author": "MemoryNet contributors",
+    "license": "Apache-2.0",
+    "type": "module",
+    "engines": {
+        "node": ">=24"
+    },
+    "scripts": {
+        "test": "node --test --test-concurrency=4 \"test/**/*.test.ts\"",
+        "typecheck": "tsc --noEmit -p .",
+        "check": "npm run typecheck && npm test",
+        "db:migrate": "node src/scripts/migrate.ts",
+        "db:backup": "node src/scripts/database-backup.ts backup",
+        "db:restore": "node src/scripts/database-backup.ts restore",
+        "app": "node --env-file-if-exists=.env.local src/web/server.ts",
+        "app:reset": "node src/scripts/reset.ts",
+        "data:download": "node src/scripts/download-public-data.ts",
+        "data:load": "node src/scripts/load-public-data.ts",
+        "data:download:evidence": "node src/scripts/download-public-evidence.ts",
+        "data:import:evidence": "node src/scripts/import-public-evidence.ts",
+        "experiment:summary": "node src/scripts/experiment-summary.ts",
+        "mcp": "node src/scripts/mcp.ts",
+        "mcp:binding": "node src/scripts/create-agent-binding.ts",
+        "eval:work": "node src/scripts/work-smoke.ts",
+        "eval:smoke": "node src/scripts/scoped-context-smoke.ts",
+        "eval:score": "node src/scripts/score-decision-lineage.ts",
+        "eval:coding": "node src/scripts/coding-demo.ts",
+        "eval:preregister": "node src/scripts/preregister.ts",
+        "demo:eslint": "node examples/eslint-demo/serve.ts",
+        "release:export": "node src/scripts/export-release.ts",
+        "site:check": "node src/scripts/site.ts check",
+        "site:build": "node src/scripts/site.ts build",
+        "site:serve": "node src/scripts/site.ts serve",
+        "contract:export": "node src/scripts/export-evaluation-contracts.ts",
+        "work:reconcile": "node src/scripts/reconcile-work.ts"
+    },
+    "dependencies": {
+        "@electric-sql/pglite": "^0.5.8",
+        "@modelcontextprotocol/server": "2.4.0",
+        "zod": "4.6.7"
+    },
+    "devDependencies": {
+        "@modelcontextprotocol/client": "2.4.0",
+        "@types/node": "^26.6.2",
+        "typescript": "^7.0.2"
+    }
+}

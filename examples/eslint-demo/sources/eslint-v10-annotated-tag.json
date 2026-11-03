@@ -1,0 +1,24 @@
+{
+  "node_id": "TA_kwDOAKjKDdoAKDY1ODAxOTkwMjVhOGVmNjdjNTI1Yzk1ZWFkYTI3ZjIzYzk0MGRiMTI",
+  "sha": "6580199025a8ef67c525c95eada27f23c940db12",
+  "url": "https://api.github.com/repos/eslint/eslint/git/tags/6580199025a8ef67c525c95eada27f23c940db12",
+  "tagger": {
+    "name": "Jenkins",
+    "email": "jenkins@eslint-03",
+    "date": "2026-02-06T22:30:03Z"
+  },
+  "object": {
+    "sha": "4e6c4ac042e321da8fc29ce53ed03c86dcaa44a7",
+    "type": "commit",
+    "url": "https://api.github.com/repos/eslint/eslint/git/commits/4e6c4ac042e321da8fc29ce53ed03c86dcaa44a7"
+  },
+  "tag": "v10.0.0",
+  "message": "10.0.0\n",
+  "verification": {
+    "verified": false,
+    "reason": "unsigned",
+    "signature": null,
+    "payload": null,
+    "verified_at": null
+  }
+}

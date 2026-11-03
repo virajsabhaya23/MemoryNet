@@ -1,0 +1,7 @@
+{
+  ".eslintrc.cjs": "fc1aec2d55e0950e7c3cc76840fdfe42e8d18015e6591082115ed13edf4e29d0",
+  "package-lock.json": "77e39da64010cfba26b67db88021e224272599556c98cd82a4770737f0a11b2d",
+  "package.json": "da6fd8d0b1810762ae24faa4ccf525aec8df6a5561fea92c180428527d26332e",
+  "src/greet.js": "fe1997a23416f1b8ac53af929c63716e89a3d97404cf94e0d49b9f8f5f9da275",
+  "test/greet.test.js": "d6c0f74e7302a741036ee00f8058c522cecaf3bd09d8cfc59fdb839649d3da61"
+}

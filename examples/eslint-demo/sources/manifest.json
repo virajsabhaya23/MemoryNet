@@ -1,0 +1,53 @@
+{
+  "schemaVersion": 1,
+  "auditedAt": "2026-10-31T15:49:54.330Z",
+  "repository": {
+    "url": "https://github.com/eslint/eslint",
+    "fullName": "eslint/eslint",
+    "externalRepositoryId": "11061773",
+    "provider": "github",
+    "license": "MIT",
+    "licenseFile": "ESLINT-LICENSE"
+  },
+  "classification": "Genuine public upstream evidence; controlled derived consumer coding task; local MemoryNet review is separate from upstream approval.",
+  "sources": [
+    {
+      "id": "eslint-v9-legacy-conditional",
+      "url": "https://github.com/eslint/eslint/pull/17927",
+      "reference": "pull/17927",
+      "revision": "0a7911e09adf2aca4d93c81f4be1cd80db7dd735",
+      "mergedAt": "2023-12-29T23:16:01Z",
+      "title": "docs: add flat config default to v9 migration guide",
+      "documentUrl": "https://github.com/eslint/eslint/blob/0a7911e09adf2aca4d93c81f4be1cd80db7dd735/docs/src/use/migrate-to-9.0.0.md",
+      "excerpt": "In case you still need to use the deprecated eslintrc config format, set environment variable `ESLINT_USE_FLAT_CONFIG` to `false`.",
+      "applicability": "ESLint v9 only; legacy explicitly deprecated; not valid for v10.",
+      "rawFile": "eslint-v9-migration-at-flat-default.md"
+    },
+    {
+      "id": "eslint-v10-flat-required",
+      "url": "https://github.com/eslint/eslint/pull/20037",
+      "reference": "pull/20037",
+      "revision": "c69fdacdb2e886b9d965568a397aa8220db3fe90",
+      "mergedAt": "2025-11-12T22:36:45Z",
+      "title": "feat!: remove eslintrc support",
+      "documentUrl": "https://github.com/eslint/eslint/blob/c69fdacdb2e886b9d965568a397aa8220db3fe90/docs/src/use/migrate-to-10.0.0.md",
+      "excerpt": "ESLint v9 introduced a [new default configuration format](./configure/configuration-files) based on the `eslint.config.js` file. The [old format](./configure/configuration-files-deprecated), which used `.eslintrc` or `.eslintrc.json`, could still be enabled in v9 by setting the `ESLINT_USE_FLAT_CONFIG` environment variable to `false`.\n\nStarting with ESLint v10, the old configuration format is no longer supported.",
+      "applicability": "ESLint v10 and later documented scope; consumer fixture pinned exactly 10.0.0.",
+      "rawFile": "eslint-v10-migration-at-removal.md"
+    }
+  ],
+  "releases": [
+    {
+      "version": "9.0.0",
+      "date": "2024-04-05",
+      "commit": "e0cbc50179adac1670f4e0bd9093387a51f4f42a",
+      "url": "https://eslint.org/blog/2024/04/eslint-v9.0.0-released/"
+    },
+    {
+      "version": "10.0.0",
+      "date": "2026-02-06",
+      "commit": "4e6c4ac042e321da8fc29ce53ed03c86dcaa44a7",
+      "url": "https://eslint.org/blog/2026/02/eslint-v10.0.0-released/"
+    }
+  ]
+}

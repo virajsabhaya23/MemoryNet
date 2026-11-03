@@ -1,0 +1,13 @@
+{
+  "name": "memorynet-eslint-transition-consumer",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Controlled consumer task derived from genuine ESLint public evidence; not an upstream ESLint project.",
+  "engines": { "node": ">=24" },
+  "scripts": {
+    "lint": "ESLINT_USE_FLAT_CONFIG=false eslint src",
+    "test": "node --test test/*.test.js"
+  },
+  "devDependencies": { "eslint": "10.0.0" }
+}

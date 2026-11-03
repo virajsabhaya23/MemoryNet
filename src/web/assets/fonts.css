@@ -1,0 +1,14 @@
+/* Self-hosted Geist Sans. SIL Open Font License: fonts/OFL.txt. */
+@font-face {
+  font-family: "Geist";
+  src: url("/assets/fonts/geist-variable.woff2") format("woff2");
+  font-style: normal;
+  font-weight: 100 900;
+  font-display: swap;
+}
+
+@font-face { font-family: "Familjen Grotesk"; src: url("/assets/fonts/familjen-grotesk-latin-variable.woff2") format("woff2"); font-weight: 400 700; font-style: normal; font-display: swap; }
+
+@font-face { font-family: "IBM Plex Sans"; src: url("/assets/fonts/ibm-plex-sans-latin-variable.woff2") format("woff2"); font-weight: 100 700; font-style: normal; font-display: swap; }
+
+@font-face { font-family: "JetBrains Mono"; src: url("/assets/fonts/jetbrains-mono-latin-variable.woff2") format("woff2"); font-weight: 100 800; font-style: normal; font-display: swap; }
