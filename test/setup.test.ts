@@ -108,7 +108,7 @@ test("client configuration adds only the memorynet entry and refuses files it ca
     assert.throws(() => renderClientConfig("claude", entry, '{"mcpServers": []}'), /unexpected/);
     const toml = renderClientConfig("codex", entry, "model = \"x\"\n");
     assert.match(toml, /^model = "x"\n\n\[mcp_servers\.memorynet\]\ncommand = "\/usr\/local\/bin\/node"/);
-    assert.match(toml, /\[mcp_servers\.memorynet\.env\]\nMEMORYNET_AGENT_BINDING_FILE = "\/tmp\/binding\.json"/);
+    assert.match(toml, /\[mcp_servers\.memorynet\.env\]\nMEMORYNET_AGENT_BINDING_FILE = "(?:[^"\\]|\\.)*binding\.json"/);
     assert.throws(() => renderClientConfig("codex", entry, toml), /already configures/);
     for (const text of [await readFile(join(folder, ".mcp.json"), "utf8"), toml]) assert.equal(/[a-f0-9]{64}/.test(text), false, "no credential is written");
   } finally {

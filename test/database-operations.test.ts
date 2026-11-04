@@ -98,7 +98,7 @@ test("an existing database is backed up before an upgrade; new and current datab
     const upgraded = await openMigratedDatabase(directory, { backup: true, now });
     try {
       assert.deepEqual(upgraded.applied, await migrationFiles());
-      assert.equal(upgraded.backup, `${await realpath(directory)}.backups/2026-11-03T18-57-47-000Z-before-${upgraded.applied[0]!.replace(".sql", "")}`);
+      assert.equal(upgraded.backup, join(`${await realpath(directory)}.backups`, `2026-11-03T18-57-47-000Z-before-${upgraded.applied[0]!.replace(".sql", "")}`));
     } finally { await upgraded.db.close(); }
 
     // The snapshot is the database as it was before the upgrade, and restores with the normal command.
