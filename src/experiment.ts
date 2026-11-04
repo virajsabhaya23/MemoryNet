@@ -1,4 +1,4 @@
-// Analysis helpers for recorded decision-reuse answers and maintenance effort.
+// Pre-registered analysis for the decision-reuse experiment.
 // Pure functions over the facilitator's answers.csv and effort.csv; nothing here reads the database.
 
 export const CONDITIONS = ["baseline", "memorynet"] as const;

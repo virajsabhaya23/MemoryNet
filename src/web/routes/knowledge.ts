@@ -50,6 +50,7 @@ import {
   typeLabel,
 } from "../views.ts";
 import { LEVEL_LABEL } from "./sign-in.ts";
+import { relationFields, relationsFromForm } from "../relations-view.ts";
 
 export const TYPE_HINTS: Readonly<Record<MemoryType, string>> = {
   decision: "decision: what was chosen",
@@ -326,6 +327,7 @@ export async function proposeSection(
     label: `${person.displayName} (${person.role})`,
   }));
   const applicability = await applicabilityFields(rc, projectId);
+  const relations = await relationFields(rc, projectId);
   return html`<section id="propose-memory">
     <h2>Propose a memory</h2>
     ${postForm(
@@ -363,6 +365,7 @@ export async function proposeSection(
           )}
         </fieldset>
         ${applicability}
+        ${relations}
         <label
           >Owner, the person accountable for keeping it correct
           <select name="ownerId" ${user.kind === "agent" ? html`required` : ""}>
@@ -473,6 +476,7 @@ async function proposeAction(rc: RequestContext): Promise<WebResponse> {
   }
   const ownerId = formValue(rc, "ownerId");
   const applicability = applicabilityFromForm(rc);
+  const relations = relationsFromForm(rc);
   const proposal = await proposeMemory(rc.ctx, user.id, {
     projectId: rc.params.id ?? "",
     type: (formValue(rc, "type") ?? "") as MemoryType,
@@ -481,6 +485,7 @@ async function proposeAction(rc: RequestContext): Promise<WebResponse> {
     evidenceSourceIds,
     ...(ownerId === undefined ? {} : { ownerId }),
     ...(applicability === undefined ? {} : { applicability }),
+    ...(relations === undefined ? {} : { relations }),
   });
   return user.kind === "agent"
     ? redirect(`/projects/${proposal.projectId}`, "proposed-by-agent")

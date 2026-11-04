@@ -38,6 +38,10 @@ export const MINIMUM_ROLE = {
   reinstate: "reviewer",
   /** Everyone's retrieval records in the scope; anyone may read their own. */
   readRetrievalLog: "administrator",
+  /** Recompute an organization's tamper-evident audit and receipt chain. */
+  verifyLedger: "administrator",
+  /** Change a project's review policy: required approvals and agent proposal limits. */
+  managePolicy: "administrator",
 } as const satisfies Record<string, Role>;
 
 export function roleForRank(rank: number): Role {

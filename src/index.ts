@@ -83,6 +83,7 @@ export {
   CAPTURE_METHODS,
   CHANGE_KINDS,
   editProposal,
+  getApprovalStatus,
   getMemory,
   getProposal,
   getProposalHistory,
@@ -100,8 +101,11 @@ export {
   proposeChange,
   proposeMemory,
   proposeRestore,
+  recordApproval,
   recordSource,
   rejectProposal,
+  type ApprovalResult,
+  type ApprovalStatus,
   type CaptureMethod,
   type ChangeKind,
   type Evidence,
@@ -120,6 +124,7 @@ export {
 export {
   assignRole,
   createPrincipal,
+  linkGitHubAccount,
   listOwnRoles,
   listPrincipals,
   listProjectPeople,
@@ -185,3 +190,22 @@ export {
 } from "./roles.ts";
 
 export { createWork, listWork, exportWork, closeWork, WorkInputSchema, type WorkInput, type WorkRecord, type WorkAssessment, type WorkIssue } from "./work.ts";
+export {
+  formatCheckpoint,
+  GENESIS_HASH,
+  ledgerCheckpoints,
+  parseCheckpoint,
+  SYSTEM_CHAIN_ID,
+  verifyLedger,
+  verifyOrganizationLedger,
+  type LedgerChainReport,
+  type LedgerCheckpoint,
+  type LedgerReport,
+} from "./ledger.ts";
+export {
+  DEFAULT_POLICY,
+  getProjectPolicy,
+  MAX_REQUIRED_APPROVALS,
+  setProjectPolicy,
+  type ProjectPolicy,
+} from "./policy.ts";

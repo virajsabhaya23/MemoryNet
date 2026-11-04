@@ -53,6 +53,7 @@ import {
   scopePath,
 } from "../views.ts";
 import { definitionsSummary } from "./definitions.ts";
+import { integrityLink, policySection } from "./governance.ts";
 import {
   exportForm,
   memoriesSection,
@@ -402,6 +403,7 @@ async function organizationPage(rc: RequestContext): Promise<WebResponse> {
           <a class="ghost-link" href="/orgs/${organization.id}/you"
             >Your network${interfaceIcon("person")}</a
           >
+          ${integrityLink(organization.id, tree.role)}
         </p>
       </div>
       <section>
@@ -645,6 +647,7 @@ async function projectPage(rc: RequestContext): Promise<WebResponse> {
       ${canPropose ? await recordSourceSection(rc, project.id) : ""}
       ${canPropose ? await proposeSection(rc, project.id, sources) : ""}
       ${isAdmin ? exportForm(rc, scope) : ""}
+      ${await policySection(rc, project.id, project.role)}
       ${connections ? repositoriesSection(rc, project.id, connections) : ""}
       ${await membersSection(rc, scope, project.role)}
       ${ownRoleSection(rc, scope, own)}`,

@@ -1,6 +1,7 @@
 import { recordAudit } from "./audit.ts";
 import {
   flagDetails,
+  mayContainInstructions,
   mayContainPersonalData,
   removeSecrets,
   type ContentFlag,
@@ -116,6 +117,7 @@ export async function captureMergedPullRequest(
   if (withoutSecrets.removed) flags.push("secret_removed");
   if (mayContainPersonalData(excerpt.text)) flags.push("personal_data");
   if (excerpt.cut) flags.push("truncated");
+  if (mayContainInstructions(excerpt.text)) flags.push("instruction_like");
 
   return ctx.db.transaction(async (tx): Promise<CaptureResult> => {
     const connected = await tx.query<{

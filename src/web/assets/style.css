@@ -638,6 +638,43 @@ form.stacked {
   max-width: 40rem;
 }
 
+/* The review queue needs the full workspace width, with local scrolling on phones. */
+form.stacked.review-batch {
+  max-width: none;
+  min-width: 0;
+}
+
+.review-batch .table-wrap {
+  min-width: 0;
+}
+
+.review-batch table {
+  min-width: 52rem;
+}
+
+.review-batch th:nth-child(2) {
+  width: 36%;
+}
+
+.review-batch > button {
+  justify-self: start;
+}
+
+form.stacked.review-batch > label.choice {
+  display: flex;
+  flex-wrap: nowrap;
+  align-items: flex-start;
+  gap: 0.65rem;
+}
+
+form.stacked.review-batch > label.choice input {
+  flex: none;
+  width: 1rem;
+  height: 1rem;
+  min-height: 0;
+  margin-top: 0.2rem;
+}
+
 form.stacked label {
   display: grid;
   gap: 0.3rem;
@@ -5348,4 +5385,15 @@ body:not(.immersive) .console-tile strong {
   body:not(.immersive) .knowledge-search input {
     flex-basis: 100%;
   }
+}
+
+/* GitHub sign-in: the one-time code the person types on github.com. */
+.device-code strong {
+  display: inline-block;
+  padding: 0.4rem 0.8rem;
+  font-family: var(--mono);
+  font-size: 1.6rem;
+  letter-spacing: 0.18em;
+  border: 1px solid currentColor;
+  border-radius: 0.4rem;
 }

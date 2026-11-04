@@ -52,6 +52,7 @@ import {
   type ProjectView,
 } from "../views.ts";
 import { applicabilityFromForm, applicabilityView, proposalStatusBadge, TYPE_HINTS } from "./knowledge.ts";
+import { relationFields, relationsFromForm, relationsView } from "../relations-view.ts";
 
 /** How a version came about, in plain words. */
 export function versionLabel(version: {
@@ -124,6 +125,7 @@ async function changeForm(
   });
   const people = await listProjectPeople(rc.ctx, user.id, view.project.id);
   const cited = new Set(memory.evidence.map((item) => item.sourceId));
+  const relationBlock = await relationFields(rc, memory.projectId, memory.relations, memory.id);
   return html`<details class="edit">
     <summary>Propose a change</summary>
     <p class="hint">
@@ -186,6 +188,7 @@ ${memory.content}</textarea
               </label>`,
           )}
         </fieldset>
+        ${relationBlock}
         <label
           >Owner
           <select name="ownerId" required>
@@ -278,6 +281,7 @@ async function memoryPage(rc: RequestContext): Promise<WebResponse> {
     </section>`);
   }
   const mayDismiss = human && rank >= ROLE_RANK.reviewer;
+  const relationsBlock = await relationsView(rc, memory.relations);
   return page(rc, {
     title: memory.title,
     crumbs: projectCrumbs(view),
@@ -299,6 +303,7 @@ async function memoryPage(rc: RequestContext): Promise<WebResponse> {
       <section>
         <h2>${memory.status === "revoked" ? "Historical decision" : "Knowledge"}</h2>
         <p class="content">${memory.content}</p>
+        ${relationsBlock}
       </section>
       <section>
         <h2>Evidence</h2>
@@ -318,7 +323,7 @@ async function memoryPage(rc: RequestContext): Promise<WebResponse> {
           <dt>Version ${memory.revision} proposed by</dt>
           <dd>${nameOf(names, memory.proposedBy)}</dd>
           <dt>Approved by</dt>
-          <dd>${nameOf(names, memory.approvedBy)} on ${memory.approvedAt}</dd>
+          <dd>${nameOf(names, memory.approvedBy)} on ${memory.approvedAt}${memory.approvals > 1 ? ` · ${memory.approvals} different reviewers approved this version` : ""}</dd>
           <dt>Review record</dt>
           <dd>
             ${seesProposals
@@ -555,6 +560,7 @@ async function changeAction(rc: RequestContext): Promise<WebResponse> {
   }
   const ownerId = formValue(rc, "ownerId");
   const applicability = applicabilityFromForm(rc);
+  const relations = relationsFromForm(rc);
   const proposal = await proposeChange(rc.ctx, user.id, {
     memoryId: rc.params.id ?? "",
     expectedRevision: expectedRevision(rc),
@@ -565,6 +571,7 @@ async function changeAction(rc: RequestContext): Promise<WebResponse> {
     evidenceSourceIds,
     ...(ownerId === undefined ? {} : { ownerId }),
     ...(applicability === undefined ? {} : { applicability }),
+    ...(relations === undefined ? {} : { relations }),
   });
   return user.kind === "agent"
     ? redirect(`/memories/${rc.params.id ?? ""}`, "proposed-by-agent")

@@ -4,7 +4,7 @@
 // --copies repeats every repository under a new name, to test organizations many times larger.
 import { readFileSync } from "node:fs";
 import { createContext } from "../context.ts";
-import { migrate, openDatabase } from "../db.ts";
+import { openMigratedDatabase } from "../database-upgrade.ts";
 import { loadPublicDataset, type PublicDataset } from "../public-data.ts";
 
 const args = process.argv.slice(2);
@@ -30,8 +30,7 @@ const dataset: PublicDataset =
           })),
         ).flat(),
       };
-const db = await openDatabase(dataDir);
-await migrate(db);
+const { db } = await openMigratedDatabase(dataDir);
 const started = Date.now();
 try {
   const summary = await loadPublicDataset(

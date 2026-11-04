@@ -115,6 +115,7 @@ const FLAG_LABELS: Readonly<Record<ContentFlag, string>> = {
   secret_removed: "secret removed",
   personal_data: "possible personal data",
   truncated: "shortened",
+  instruction_like: "instruction-like text",
 };
 
 export function flagBadges(flags: readonly ContentFlag[]): SafeHtml {

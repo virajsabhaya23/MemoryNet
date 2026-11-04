@@ -177,7 +177,7 @@ async function toNotCurrent(
   };
 }
 
-interface NewRecord {
+export interface NewRecord {
   projectId: string;
   callerId: string;
   terms: string | null;
@@ -191,7 +191,8 @@ interface NewRecord {
   }>;
 }
 
-async function recordRetrieval(
+/** Writes one append-only receipt and its items. Call inside the retrieval's transaction. */
+export async function recordRetrieval(
   q: Queryable,
   record: NewRecord,
 ): Promise<string> {

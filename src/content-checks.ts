@@ -5,6 +5,7 @@ export const CONTENT_FLAGS = [
   "secret_removed",
   "personal_data",
   "truncated",
+  "instruction_like",
 ] as const;
 export type ContentFlag = (typeof CONTENT_FLAGS)[number];
 
@@ -83,4 +84,31 @@ export function flagDetails(
   flags: readonly ContentFlag[],
 ): Record<string, string> {
   return flags.length > 0 ? { contentFlags: flags.join(",") } : {};
+}
+
+// Text addressed to an AI model rather than describing engineering knowledge: attempts to override
+// instructions, impersonate chat roles, or hide characters. Bounded patterns; reviewers judge the flag.
+const INSTRUCTION_PATTERNS: readonly RegExp[] = [
+  /\b(?:ignore|disregard|forget|override)\s{1,5}(?:all\s{1,5}|any\s{1,5}|the\s{1,5})?(?:previous|prior|above|earlier|system|other)\s{1,5}(?:instructions?|prompts?|messages?|rules|context)\b/i,
+  /\byou\s{1,5}are\s{1,5}now\s{1,5}(?:a|an|the|in)\b/i,
+  /\b(?:new|updated|real|actual)\s{1,5}(?:system\s{1,5})?instructions?\s{0,5}:/i,
+  /\b(?:system|developer)\s{1,5}(?:prompt|message|instructions?)\s{0,5}[:=]/i,
+  /<\/?\s{0,3}(?:system|assistant|tool|im_start|im_end|instructions?)\b[^>]{0,40}>/i,
+  /\[\/?(?:INST|SYS)\]/,
+  /\b(?:do\s{1,5}not|don't|never)\s{1,5}(?:tell|inform|mention|reveal\s{1,5}(?:this\s{1,5})?to)\s{1,5}(?:the\s{1,5})?(?:user|human|reviewer|operator)\b/i,
+  // Zero-width and bidirectional control characters can hide text from a reviewer.
+  /[\u200b-\u200f\u202a-\u202e\u2066-\u2069\ufeff]/,
+];
+
+/** True when text looks like instructions aimed at an AI model. A flag for reviewers, not a block. */
+export function mayContainInstructions(text: string): boolean {
+  return INSTRUCTION_PATTERNS.some((pattern) => pattern.test(text));
+}
+
+/** The flags a person's typed text earns: possible personal data and instruction-like text. */
+export function typedTextFlags(text: string): ContentFlag[] {
+  const flags: ContentFlag[] = [];
+  if (mayContainPersonalData(text)) flags.push("personal_data");
+  if (mayContainInstructions(text)) flags.push("instruction_like");
+  return flags;
 }

@@ -183,6 +183,9 @@ async function runPage(rc: RequestContext): Promise<WebResponse> {
       ${applicabilityView(run.applicability, rc.ctx.now(), true)}
       ${provenance.usage ? html`<p class="hint">Reported usage: ${provenance.usage.inputTokens} input tokens,
         ${provenance.usage.outputTokens} output tokens.</p>` : ""}
+      <p class="hint">Model latency: ${typeof provenance.latencyMs === "number" && Number.isFinite(provenance.latencyMs) && provenance.latencyMs >= 0 ? `${Math.round(provenance.latencyMs).toLocaleString("en-US")} ms` : "Not reported"}.
+        ${provenance.parameters ? html`Output cap: ${provenance.parameters.maxOutputTokens} tokens.
+          ${provenance.parameters.reasoningEffort ? html`Reasoning effort: ${provenance.parameters.reasoningEffort}.` : ""}` : ""}</p>
       ${run.extraction.candidates.length === 0 ? html`<p class="empty">Not enough evidence in this PR to suggest a decision.
         No decision proposal was saved.</p>` : ""}
     </section>

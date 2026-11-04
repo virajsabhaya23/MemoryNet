@@ -49,6 +49,8 @@ export interface Session {
   principalId: string;
   csrfToken: string;
   createdAt: number;
+  /** Present after GitHub sign-in. The token stays in server memory and is never rendered or stored. */
+  github?: { readonly token: string; readonly login: string; readonly userId: string };
 }
 
 export interface RequestContext {
@@ -68,6 +70,10 @@ export interface RequestContext {
   decisionGuardAvailable?: boolean;
   checkouts?: CheckoutCatalog;
   prototype?: {principalId:string;login:string};
+  /** GitHub sign-in is configured: persona selection, access keys and System controls are off. */
+  github?: boolean;
+  /** Single local operator; no application sign-in or persona switching. */
+  local?: boolean;
 }
 
 /** public: anyone. user: a signed-in person or agent. system: the System page, which stands in for GitHub. */
@@ -106,6 +112,10 @@ const NOTICES: Readonly<Record<string, string>> = {
   "proposed-by-agent":
     "Proposal sent for review. Agents cannot see proposals, so it is not listed for you.",
   approved: "Approved. This memory is now knowledge, with its own ID.",
+  "approval-recorded":
+    "Approval recorded for this exact version. It is published once enough different reviewers approve the same version.",
+  "policy-saved": "Review policy saved as a new version. It applies to approvals from now on.",
+  "batch-reviewed": "Review finished. Each proposal's result is listed below.",
   rejected:
     "Proposal rejected. It stays as a review record and is not knowledge.",
   "pr-captured":
@@ -327,7 +337,7 @@ function layout(rc: RequestContext, options: PageOptions): SafeHtml {
             >${BRAND_MARK}<span class="brand-name">MemoryNet</span></a
           >
           <nav aria-label="Main">
-            ${NAV.filter(([,href])=>!rc.prototype||href!=="/system").map(
+            ${NAV.filter(([,href])=>!(rc.local||rc.prototype||rc.github)||href!=="/system").map(
               ([label, href, icon]) =>
                 html`<a
                   href="${href}"
@@ -339,11 +349,15 @@ function layout(rc: RequestContext, options: PageOptions): SafeHtml {
             )}
           </nav>
           <div class="rail-foot">
-            <span class="tag" title="${rc.prototype ? "Secured local prototype using original public repository evidence" : "Local pilot: public or synthetic evidence only. Identity selection is not authentication."}"
-              ><span class="tag-text">${rc.prototype ? "Local prototype" : "Local pilot"}</span></span
+            <span class="tag" title="${rc.local ? "Single-operator workspace on this computer. No app sign-in required." : rc.github ? "Signed in with GitHub; repository access is checked with GitHub" : rc.prototype ? "Secured local prototype using original public repository evidence" : "Local pilot: public or synthetic evidence only. Identity selection is not authentication."}"
+              ><span class="tag-text">${rc.local ? "Local workspace" : rc.github ? "GitHub sign-in" : rc.prototype ? "Local prototype" : "Local pilot"}</span></span
             >
             ${themeSwitch(theme)}
-            ${user
+            ${rc.local && user
+              ? html`<div class="who"><span class="avatar" aria-hidden="true">${initialsOf(user.displayName)}</span>
+                  <span class="who-text"><strong>${user.displayName}</strong><small>Local operator</small></span>
+                  <a href="/connections">Connections</a></div>`
+              : user
               ? html`<form class="who" method="post" action="/sign-out">
                   <span class="avatar" aria-hidden="true"
                     >${initialsOf(user.displayName)}</span
@@ -355,7 +369,7 @@ function layout(rc: RequestContext, options: PageOptions): SafeHtml {
                     ></span
                   >
                   ${csrfField(rc)}
-                  <button type="submit" class="secondary">${rc.prototype ? "Sign out" : "Switch person"}</button>
+                  <button type="submit" class="secondary">${rc.prototype || rc.github ? "Sign out" : "Switch person"}</button>
                 </form>`
               : html`<span class="who"
                   ><span class="avatar" aria-hidden="true">?</span

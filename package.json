@@ -2,7 +2,7 @@
     "name": "memorynet",
     "version": "0.1.0",
     "private": true,
-    "description": "Reviewed engineering decisions with source evidence, version history, a local web app, and scoped read-only MCP context.",
+    "description": "Help AI coding agents use current, human-approved engineering decisions with cited evidence and stale-work detection.",
     "author": "MemoryNet contributors",
     "license": "Apache-2.0",
     "type": "module",
@@ -10,6 +10,11 @@
         "node": ">=24"
     },
     "scripts": {
+        "setup": "node src/scripts/setup.ts",
+        "start": "node --env-file-if-exists=.env.local src/scripts/start.ts",
+        "connect": "node src/scripts/connect.ts",
+        "doctor": "node src/scripts/doctor.ts",
+        "github:link": "node --env-file-if-exists=.env.local src/scripts/github-link.ts",
         "test": "node --test --test-concurrency=4 \"test/**/*.test.ts\"",
         "typecheck": "tsc --noEmit -p .",
         "check": "npm run typecheck && npm test",
@@ -26,6 +31,7 @@
         "mcp": "node src/scripts/mcp.ts",
         "mcp:binding": "node src/scripts/create-agent-binding.ts",
         "eval:work": "node src/scripts/work-smoke.ts",
+        "demo": "node src/scripts/demo.ts",
         "eval:smoke": "node src/scripts/scoped-context-smoke.ts",
         "eval:score": "node src/scripts/score-decision-lineage.ts",
         "eval:coding": "node src/scripts/coding-demo.ts",
@@ -36,7 +42,9 @@
         "site:build": "node src/scripts/site.ts build",
         "site:serve": "node src/scripts/site.ts serve",
         "contract:export": "node src/scripts/export-evaluation-contracts.ts",
-        "work:reconcile": "node src/scripts/reconcile-work.ts"
+        "work:reconcile": "node src/scripts/reconcile-work.ts",
+        "ledger:verify": "node src/scripts/ledger.ts verify",
+        "ledger:checkpoint": "node src/scripts/ledger.ts checkpoint"
     },
     "dependencies": {
         "@electric-sql/pglite": "^0.5.8",

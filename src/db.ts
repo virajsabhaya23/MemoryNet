@@ -39,6 +39,18 @@ export async function openDatabase(dataDir?: string): Promise<Database> {
   }
 }
 
+/** Migration file names in the order they apply. */
+export async function migrationFiles(): Promise<string[]> {
+  return (await readdir(MIGRATIONS_DIR)).filter((file) => file.endsWith(".sql")).sort();
+}
+
+/** How many migrations a database has applied and which are still pending, without changing it. */
+export async function pendingMigrations(db: Queryable): Promise<{ applied: number; pending: string[] }> {
+  const table = (await db.query<{ name: string | null }>("SELECT to_regclass('schema_migrations')::text AS name")).rows[0]?.name;
+  const applied = new Set(table ? (await db.query<{ name: string }>("SELECT name FROM schema_migrations")).rows.map((row) => row.name) : []);
+  return { applied: applied.size, pending: (await migrationFiles()).filter((file) => !applied.has(file)) };
+}
+
 /** Applies pending migrations/*.sql files in name order, each in its own transaction. */
 export async function migrate(db: Database): Promise<string[]> {
   await db.exec(
@@ -48,9 +60,7 @@ export async function migrate(db: Database): Promise<string[]> {
     "SELECT name FROM schema_migrations",
   );
   const applied = new Set(rows.map((row) => row.name));
-  const files = (await readdir(MIGRATIONS_DIR))
-    .filter((file) => file.endsWith(".sql"))
-    .sort();
+  const files = await migrationFiles();
   const newlyApplied: string[] = [];
   for (const file of files) {
     if (applied.has(file)) continue;
