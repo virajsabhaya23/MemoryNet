@@ -1,0 +1,197 @@
+/* MemoryNet Cobalt system — Hallmark Cobalt (site/themes/cobalt) adapted for the app.
+   Flat paper, hairline rules, physical key buttons. Light + graphite dark via light-dark().
+   This sheet loads last during migration; legacy style.css/cobalt.css are removed in Task 11. */
+
+:root {
+  --paper: light-dark(oklch(98.6% 0.005 250), oklch(18% 0.022 262));
+  --paper-2: light-dark(oklch(96.2% 0.008 252), oklch(21% 0.024 262));
+  --surface: light-dark(oklch(100% 0 0), oklch(21% 0.024 262));
+  --surface-2: light-dark(oklch(96.2% 0.008 252), oklch(26.5% 0.026 262));
+  --surface-3: light-dark(oklch(93% 0.011 252), oklch(31% 0.028 262));
+  --ink: light-dark(oklch(21% 0.028 262), oklch(93% 0.010 250));
+  --ink-2: light-dark(oklch(36% 0.022 260), oklch(80% 0.015 256));
+  --muted: light-dark(oklch(50% 0.018 258), oklch(69% 0.022 256));
+  --rule: light-dark(oklch(90% 0.009 252), oklch(31% 0.028 262));
+  --rule-2: light-dark(oklch(83% 0.012 252), oklch(38% 0.025 260));
+  --accent: light-dark(oklch(52% 0.19 258), oklch(76% 0.13 254));
+  --accent-deep: light-dark(oklch(39% 0.16 260), oklch(56% 0.14 258));
+  --accent-wash: light-dark(oklch(95% 0.028 256), oklch(28% 0.06 258));
+  --accent-ink: light-dark(oklch(98.6% 0.005 250), oklch(18% 0.022 262));
+  --focus: light-dark(oklch(52% 0.19 258), oklch(76% 0.13 254));
+  --error: light-dark(oklch(52% 0.19 27), oklch(72% 0.15 27));
+  --error-wash: light-dark(oklch(95% 0.03 27), oklch(28% 0.07 27));
+  --success: light-dark(oklch(50% 0.12 150), oklch(72% 0.12 150));
+  --success-wash: light-dark(oklch(95% 0.03 150), oklch(27% 0.05 150));
+  --warning: light-dark(oklch(52% 0.13 70), oklch(75% 0.13 75));
+  --warning-wash: light-dark(oklch(96% 0.04 80), oklch(28% 0.05 75));
+  --kind-knowledge: light-dark(oklch(52% 0.19 258), oklch(76% 0.13 254));
+  --kind-evidence: light-dark(oklch(50% 0.11 175), oklch(72% 0.11 175));
+  --kind-guidance: light-dark(oklch(52% 0.11 285), oklch(74% 0.10 285));
+  --kind-people: light-dark(oklch(50% 0.05 245), oklch(72% 0.05 245));
+  --font-display: "Familjen Grotesk", system-ui, sans-serif;
+  --font-body: "IBM Plex Sans", system-ui, sans-serif;
+  --font-data: "JetBrains Mono", ui-monospace, monospace;
+  --radius-card: 8px;
+  --radius-input: 6px;
+  --shadow-card: 0 1px 2px light-dark(oklch(21% 0.028 262 / 0.06), oklch(0% 0 0 / 0.35));
+  --shadow-panel: 0 1px 0 var(--rule), 0 18px 32px -24px light-dark(oklch(21% 0.028 262 / 0.28), oklch(0% 0 0 / 0.5));
+  --key-edge: light-dark(oklch(83% 0.012 252), oklch(38% 0.025 260));
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+
+  /* Re-alias the legacy token names so unmigrated pages render in Cobalt too. */
+  --font: var(--font-body);
+  --display: var(--font-display);
+  --mono: var(--font-data);
+  --bg: var(--paper);
+  --text: var(--ink);
+  --text-2: var(--ink-2);
+  --text-3: var(--muted);
+  --border: var(--rule);
+  --border-strong: var(--rule-2);
+  --hairline: var(--rule);
+  --accent-strong: var(--accent-deep);
+  --accent-soft: var(--accent-wash);
+  --on-accent: var(--accent-ink);
+  --sunken: var(--paper-2);
+  --glass: var(--surface);
+  --glass-border: var(--rule);
+  --bg-glow: transparent;
+  --bg-glow-2: transparent;
+  --radius: var(--radius-card);
+  --radius-m: var(--radius-input);
+  --radius-s: 4px;
+  --shadow-1: var(--shadow-card);
+  --shadow-2: var(--shadow-panel);
+  --f-knowledge: var(--kind-knowledge);
+  --f-evidence: var(--kind-evidence);
+  --f-guidance: var(--kind-guidance);
+  --f-people: var(--kind-people);
+  --canvas: var(--paper);
+  --canvas-dot: light-dark(oklch(90% 0.009 252), oklch(31% 0.028 262));
+  --edge: light-dark(oklch(62% 0.02 258), oklch(62% 0.02 258));
+  --edge-quiet: light-dark(oklch(83% 0.012 252), oklch(38% 0.025 260));
+}
+
+body, body:not(.immersive) {
+  background: var(--paper);
+  color: var(--ink);
+  font-family: var(--font-body);
+}
+h1, h2, h3 { font-family: var(--font-display); letter-spacing: -0.028em; }
+code, kbd, .mono, .org-slug, .net-live, .count-pill { font-family: var(--font-data); }
+:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+::selection { background: var(--accent-wash); }
+
+/* ————— Keys: flat faces on a hard edge ————— */
+.key, a.key, button.key {
+  display: inline-flex; align-items: center; justify-content: center; gap: 0.5rem;
+  min-height: 42px; padding: 0.55rem 1.1rem;
+  font-family: var(--font-body); font-size: 0.9rem; font-weight: 500;
+  color: var(--ink); background: light-dark(oklch(99.4% 0.003 250), oklch(26.5% 0.026 262));
+  border: 1px solid var(--rule-2); border-radius: var(--radius-input);
+  box-shadow: 0 3px 0 0 var(--key-edge), inset 0 1px 0 light-dark(oklch(100% 0 0 / 0.9), oklch(100% 0 0 / 0.08));
+  text-decoration: none; cursor: pointer;
+  transition: transform 120ms var(--ease-out), box-shadow 120ms var(--ease-out), background 120ms var(--ease-out);
+}
+.key:hover { transform: translateY(-1px); box-shadow: 0 4px 0 0 var(--key-edge), inset 0 1px 0 light-dark(oklch(100% 0 0 / 0.9), oklch(100% 0 0 / 0.08)); }
+.key:active { transform: translateY(2px); box-shadow: 0 0 0 0 var(--key-edge), inset 0 1px 2px light-dark(oklch(21% 0.028 262 / 0.14), oklch(0% 0 0 / 0.3)); }
+.key:disabled { transform: none; box-shadow: none; opacity: 0.5; cursor: not-allowed; }
+.key-primary, a.key-primary, button.key-primary {
+  color: var(--accent-ink); background: var(--accent); border-color: var(--accent-deep);
+  box-shadow: 0 3px 0 0 var(--accent-deep), inset 0 1px 0 light-dark(oklch(100% 0 0 / 0.22), oklch(100% 0 0 / 0.22));
+}
+.key-primary:hover { background: light-dark(oklch(48% 0.19 259), oklch(72% 0.13 254)); box-shadow: 0 4px 0 0 var(--accent-deep), inset 0 1px 0 light-dark(oklch(100% 0 0 / 0.22), oklch(100% 0 0 / 0.22)); }
+.key-primary:active { box-shadow: 0 0 0 0 var(--accent-deep), inset 0 1px 3px light-dark(oklch(21% 0.1 262 / 0.32), oklch(0% 0 0 / 0.3)); }
+.key-small { min-height: 34px; padding: 0.3rem 0.75rem; font-size: 0.8125rem; }
+
+/* Existing button/link classes become keys without markup changes. */
+body:not(.immersive) a.button-link,
+body:not(.immersive) form.stacked > button[type="submit"],
+body:not(.immersive) form.inline > button[type="submit"] {
+  background: var(--accent); color: var(--accent-ink); border: 1px solid var(--accent-deep);
+  box-shadow: 0 3px 0 0 var(--accent-deep); border-radius: var(--radius-input);
+}
+body:not(.immersive) button.secondary, body:not(.immersive) a.ghost-link {
+  background: light-dark(oklch(99.4% 0.003 250), oklch(26.5% 0.026 262)); color: var(--ink);
+  border: 1px solid var(--rule-2); box-shadow: 0 3px 0 0 var(--key-edge); border-radius: var(--radius-input);
+}
+body button, body a.button-link, body a.ghost-link { border-radius: var(--radius-input); }
+body button:active, body a.button-link:active, body a.ghost-link:active { transform: translateY(2px); box-shadow: none; }
+body input, body select, body textarea {
+  background: var(--surface); color: var(--ink); border: 1px solid var(--rule-2);
+  border-radius: var(--radius-input); min-height: 42px; box-shadow: none;
+}
+body input:focus, body select:focus, body textarea:focus { outline: 2px solid var(--focus); outline-offset: 2px; box-shadow: none; }
+
+/* ————— Badges: icon + text, never color alone ————— */
+.badge {
+  display: inline-flex; align-items: center; gap: 0.35rem;
+  padding: 0.15rem 0.55rem; border: 1px solid var(--rule-2); border-radius: 999px;
+  background: var(--surface); color: var(--ink-2);
+  font-size: 0.75rem; font-weight: 500; letter-spacing: 0; text-transform: none; white-space: nowrap;
+}
+.badge[data-kind="knowledge"] { border-color: var(--kind-knowledge); color: var(--kind-knowledge); }
+.badge[data-kind="evidence"] { border-color: var(--kind-evidence); color: var(--kind-evidence); }
+.badge[data-kind="guidance"] { border-color: var(--kind-guidance); color: var(--kind-guidance); }
+.badge[data-kind="people"] { border-color: var(--kind-people); color: var(--kind-people); }
+.badge[data-state="current"] { border-color: var(--success); color: var(--success); }
+.badge[data-state="pending"], .badge[data-state="warning"] { border-color: var(--warning); color: var(--warning); }
+.badge[data-state="flagged"] { border-color: var(--error); color: var(--error); }
+.badge[data-state="retired"] { border-style: dashed; color: var(--muted); }
+
+/* ————— Ledger: hairline rows, not card grids ————— */
+.ledger { list-style: none; margin: 0; padding: 0; border-top: 1px solid var(--rule); }
+.ledger-row {
+  display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 0.25rem 1.5rem;
+  padding: 1rem 0.75rem; border-bottom: 1px solid var(--rule); background: var(--surface);
+}
+.ledger-row:hover { background: var(--paper-2); }
+.ledger-row > a { color: inherit; text-decoration: none; }
+.ledger-row .row-title { font-family: var(--font-display); font-size: 1.05rem; font-weight: 500; min-width: 0; overflow-wrap: break-word; }
+.ledger-row .row-meta { grid-column: 1; color: var(--muted); font-size: 0.8125rem; }
+.ledger-row .row-trailing { grid-row: 1 / 3; grid-column: 2; display: flex; align-items: center; gap: 0.75rem; }
+
+/* ————— Record head + stat strip ————— */
+.record-head {
+  display: flex; flex-wrap: wrap; align-items: flex-start; gap: 0.75rem 1.5rem;
+  padding-bottom: 1.25rem; border-bottom: 1px solid var(--rule); margin-bottom: 1.5rem;
+}
+.record-head h1, .record-head .record-title { font-size: 1.953rem; line-height: 1.15; margin: 0; }
+.record-head .record-meta { flex-basis: 100%; color: var(--muted); font-size: 0.875rem; }
+.record-head .record-actions { margin-left: auto; display: flex; gap: 0.75rem; flex-wrap: wrap; }
+.stat-strip {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr));
+  margin: 0 0 1.5rem; border-block: 1px solid var(--rule);
+}
+.stat-strip > div { padding: 1rem 1.25rem; border-right: 1px solid var(--rule); }
+.stat-strip > div:last-child { border-right: 0; }
+.stat-strip dt { color: var(--muted); font-size: 0.8125rem; }
+.stat-strip dd { margin: 0.35rem 0 0; font-family: var(--font-display); font-size: 1.5625rem; font-weight: 500; font-variant-numeric: tabular-nums; }
+
+/* ————— Scope tabs + panels + fields ————— */
+.scope-tabs { display: flex; flex-wrap: wrap; gap: 0.25rem; border-bottom: 1px solid var(--rule); margin-bottom: 1.5rem; }
+.scope-tabs a {
+  display: inline-flex; align-items: center; gap: 0.5rem; min-height: 44px; padding: 0.5rem 0.9rem;
+  color: var(--ink-2); text-decoration: none; font-weight: 500; font-size: 0.9rem;
+  border: 1px solid transparent; border-bottom: 0; border-radius: var(--radius-input) var(--radius-input) 0 0;
+}
+.scope-tabs a:hover { color: var(--ink); background: var(--paper-2); }
+.scope-tabs a[aria-current="page"] { color: var(--accent-deep); background: var(--accent-wash); border-color: var(--rule); }
+.scope-tabs .tab-count { font-family: var(--font-data); font-size: 0.75rem; color: var(--muted); }
+.panel { background: var(--surface); border: 1px solid var(--rule); border-radius: var(--radius-card); box-shadow: var(--shadow-panel); padding: 1.25rem 1.5rem; }
+.field { display: grid; gap: 0.35rem; font-size: 0.875rem; font-weight: 500; color: var(--ink-2); }
+section, .console-card, .console-panel, .unit, .org-hero { border-radius: var(--radius-card); }
+body:not(.immersive) section { box-shadow: none; }
+body:not(.immersive) th {
+  color: var(--muted); font-family: var(--font-body); font-size: 0.8125rem; font-weight: 500;
+  text-transform: none; letter-spacing: 0; background: var(--paper-2);
+}
+.table-wrap { border: 1px solid var(--rule); border-radius: var(--radius-input); box-shadow: var(--shadow-card); overflow-x: auto; }
+tbody tr:hover { background: var(--paper-2); }
+.notice, .error, .empty-state { border-radius: var(--radius-input); box-shadow: none; }
+pre { background: var(--paper-2); color: var(--ink); }
+.org-mark { background: var(--accent); color: var(--accent-ink); border: 1px solid var(--accent-deep); border-radius: 6px; box-shadow: none; }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { transition: none !important; animation: none !important; scroll-behavior: auto !important; }
+}
