@@ -17,7 +17,7 @@ Public PR snapshot / manual evidence / synthetic event
                                           |
                               authenticated loopback bridge
                                           |
-                                  read-only stdio MCP
+                                  scoped stdio MCP
 ```
 
 The web app owns the database. The separate MCP process calls the app over loopback; it never opens that database. Network views use the same permission-filtered records as ordinary pages.
@@ -32,7 +32,10 @@ The web app owns the database. The separate MCP process calls the app over loopb
 | `src/knowledge.ts`, `history.ts` | Sources, proposals, exact-version review, memory revisions and lifecycle |
 | `src/retrieval.ts`, `export.ts` | Search, retrieval receipts and readable knowledge export |
 | `src/decision-guard/` | Optional model extraction, provenance and pending-proposal publication |
-| `src/agent-context/`, `src/mcp/` | Strict context schemas, scoped bindings and MCP transport |
+| `src/agent-context/`, `src/mcp/`, `src/task-context.ts` | Scoped context, reviewed-link expansion, agent proposals/reports, bindings and MCP transport |
+| `src/policy.ts`, `src/relations.ts`, `src/ledger.ts` | Review thresholds, decision links and audit integrity |
+| `src/setup.ts`, `src/workspace.ts`, `src/client-config.ts` | Repository onboarding, workspace profiles and coding-client configuration |
+| `src/github.ts`, `src/web/github-sign-in.ts` | Optional GitHub device-flow sign-in and repository access refresh |
 | `src/work.ts`, `work-git.ts` | Immutable task baselines, decision revalidation and Git artifact observations |
 | `src/definitions.ts`, `prompt.ts` | Reviewed agent/skill/rule definitions and prompt assembly |
 | `src/network.ts`, `src/web/my-network.ts` | Permission-filtered network data |
@@ -47,21 +50,21 @@ The web app owns the database. The separate MCP process calls the app over loopb
 
 Role inheritance is defined by database views. Read access requires a MemoryNet role and a fresh repository-access report for every evidence dependency. Checks run on list, direct-ID, history, retrieval and export operations. Revoked access is evaluated again on each request; previously downloaded files cannot be recalled.
 
-Sources, proposal revisions and approved memory revisions are separate records. Approval commits an exact proposal revision and its evidence in one transaction. A reviewer must be an authorized human who authored none of that proposal's revisions. Agents can propose and retrieve but cannot approve. Optimistic revision checks reject conflicting edits; replacements atomically supersede the previous memory. Revocation preserves history and cannot be undone through ordinary reinstatement.
+Sources, proposal revisions and approved memory revisions are separate records. A project may require one to three distinct human approvals; publication commits the exact proposal revision, evidence, governed paths, and reviewed links in one transaction. A reviewer must be an authorized human who authored none of that proposal's revisions. Agents can propose and retrieve but cannot approve. Optimistic revision checks reject conflicting edits; replacements atomically supersede the previous memory. Revocation preserves history and cannot be undone through ordinary reinstatement.
 
 Scoped guidance binds a numeric repository ID, exact branch and validity interval to the reviewed version. Scoped retrieval filters authority before ranking and logging. Legacy unscoped records remain available in project browsing but cannot become scoped guidance through inferred metadata. See the [agent context contract](agent-context.md).
 
-Retrieval receipts identify the exact returned memory versions. The audit log and retrieval records are append-only. Reads of historical receipts still require current access to their underlying records.
+Retrieval receipts identify the exact returned memory versions. The audit log and retrieval records are append-only and chained into a per-organization SHA-256 ledger. Verification detects changed history; external checkpoints detect a rebuilt chain. Reads of historical receipts still require current access to their underlying records.
 
 ## Local runtime
 
-`npm run app` listens on `127.0.0.1:3050`. A fresh checkout uses development personas and synthetic System controls. Optional owner-only prototype configuration selects one access-key operator and disables those controls. Use `MEMORYNET_PROTOTYPE_CONFIG=off` for the documented sandbox commands; an explicitly selected prototype configuration takes precedence over `MEMORYNET_DATA_DIR`.
+`npm run app` listens on `127.0.0.1:3050`. A fresh checkout uses development personas and synthetic System controls. A matching setup profile opens as its local operator, disabling persona switching and System controls. Existing GitHub and access-key configurations preserve their login gate; `MEMORYNET_AUTH_MODE` selects a mode explicitly. Use `MEMORYNET_AUTH_MODE=sandbox MEMORYNET_PROTOTYPE_CONFIG=off` for sandbox commands; an explicitly selected prototype configuration takes precedence over `MEMORYNET_DATA_DIR`.
 
 Sessions stay in server memory. Sign-in creates a fresh HttpOnly/SameSite cookie; protected forms check request origin and CSRF tokens. Host checks reject non-loopback names, response templates escape inserted values, and the content policy restricts scripts and styles to local assets. Domain functions enforce permissions independently of visible controls.
 
-The database has one process owner, enforced by an adjacent lock directory. Startup applies pending migrations and gathers planning statistics. Offline backup/restore verifies a SHA-256 inventory; reset accepts only a stopped database below `.data/`. See [local operations](local-operations.md).
+The database has one process owner, enforced by an adjacent lock directory. Startup takes a verified backup before upgrading an existing database, applies pending migrations, and gathers planning statistics. Offline backup/restore verifies a SHA-256 inventory; reset accepts only a stopped database below `.data/`. See [local operations](local-operations.md).
 
-The app is intended for public or synthetic data on one trusted computer. Development personas are not verified identity; the optional access key is single-operator authentication. Signed GitHub ingestion, live permission synchronization, shared identity, record-level deletion and hosted operations are unavailable. See [SECURITY.md](../SECURITY.md).
+The app is intended for public or synthetic data on one trusted computer. Development personas are not verified identity; the optional access key is single-operator authentication. Optional GitHub sign-in verifies linked accounts and refreshes access for signed-in people. Signed GitHub ingestion, organization/team synchronization, hosted identity, record-level deletion and hosted operations are unavailable. See [SECURITY.md](../SECURITY.md).
 
 ## Other workflows
 

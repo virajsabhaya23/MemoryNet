@@ -1,0 +1,57 @@
+{
+  "schemaVersion": 1,
+  "evidenceKind": "historical_observations_reviewed_2026_11_03",
+  "rerun": false,
+  "effectivenessEstablished": false,
+  "retryTask": {
+    "recordedAt": "2026-10-31T02:08:59.605Z",
+    "sourceSha256": "43ceaffbcfa7f980cfd782b165b5c3777b5ea890852a24814ff46747fac4821f",
+    "observationsPerArm": 1,
+    "arms": {
+      "repo-instructions": {
+        "scenario": "stale-repository-instructions",
+        "passed": false
+      },
+      "dated-sources": {
+        "scenario": "stale-repository-instructions",
+        "passed": true
+      },
+      "repo-memorynet": {
+        "scenario": "stale-repository-instructions",
+        "passed": true
+      },
+      "baseline": {
+        "scenario": "structured-decisions-file",
+        "passed": true
+      },
+      "memorynet": {
+        "scenario": "structured-decisions-file",
+        "passed": true
+      }
+    },
+    "limitations": [
+      "Synthetic task; one observation per arm.",
+      "The stale-instructions arm deliberately lacks updated guidance.",
+      "Maintained dated sources and structured decisions also passed.",
+      "Agent model identity, tokens and cost were not collected."
+    ]
+  },
+  "eslint": {
+    "eventDate": "2026-10-31",
+    "sourceSha256": "1e465b989004391ebfedea2a5e81b4c5c373d9bb86fa7dcd6c31f29135ecf7a6",
+    "fixture": "Controlled ESLint 10.0.0 consumer using pinned public upstream documentation; not an upstream repository change",
+    "coding": {
+      "baseline": "pass",
+      "memorynet": "pass",
+      "checksPerArm": 7,
+      "comparison": "tie",
+      "resourceEquivalent": false
+    },
+    "limitations": [
+      "Historical summary, not a new run.",
+      "Resource-equivalent comparison was not established.",
+      "Independent human approval and final video were not verified.",
+      "Raw original extraction output is unavailable."
+    ]
+  }
+}

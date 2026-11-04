@@ -1,0 +1,220 @@
+{
+  "schemaVersion": 1,
+  "evidenceKind": "synthetic_decision_lifecycle",
+  "recordedAt": "2026-11-03T22:33:48.057Z",
+  "nodeVersion": "v26.3.0",
+  "metaCalls": 0,
+  "extraction": "scripted fixture; not live Meta inference",
+  "approvals": "automated fixture actions using distinct principals; not independent human review",
+  "codeBehaviorVerified": false,
+  "benchmark": false,
+  "passed": true,
+  "scope": {
+    "projectId": "abfa42b9-8671-42a3-86ea-6c4c301769be",
+    "repositoryId": "1001",
+    "branch": "main"
+  },
+  "quote": {
+    "text": "Synthetic demonstration evidence; this is not a real pull request.\nDecision: Retry HTTP 429 and 503 while retriesSoFar is less than 3.",
+    "end": 134,
+    "quote": "Retry HTTP 429 and 503 while retriesSoFar is less than 3.",
+    "start": 77,
+    "sourceId": "6c57a125-bb16-4c2f-96e9-7e204c660eee"
+  },
+  "proposalId": "98ad293a-3952-4b10-98c5-3f880ed94b66",
+  "pending": {
+    "schemaVersion": 1,
+    "scope": {
+      "projectId": "abfa42b9-8671-42a3-86ea-6c4c301769be",
+      "repositoryId": "1001",
+      "branch": "main"
+    },
+    "retrievalId": "36924bea-1faf-4db3-b90e-ee9de8026ad4",
+    "retrievedAt": "2026-10-30T16:00:00.000Z",
+    "outcome": "no_results",
+    "moreMatches": false,
+    "current": []
+  },
+  "before": {
+    "schemaVersion": 1,
+    "scope": {
+      "projectId": "abfa42b9-8671-42a3-86ea-6c4c301769be",
+      "repositoryId": "1001",
+      "branch": "main"
+    },
+    "retrievalId": "72bdf73e-8d4a-49e7-9861-db0846793e04",
+    "retrievedAt": "2026-10-30T16:00:00.000Z",
+    "outcome": "results",
+    "moreMatches": false,
+    "current": [
+      {
+        "memoryId": "33b44c5a-fd89-4bf2-b6be-901e4aeb67ae",
+        "revision": 1,
+        "type": "decision",
+        "title": "Retry policy",
+        "content": "Retry HTTP 429 and 503 while retriesSoFar is less than 3.",
+        "shortened": false,
+        "approvedBy": "91c474b9-99c2-4ca5-90d2-ecc7fcc8c1f7",
+        "approvedAt": "2026-10-30T16:00:00.000Z",
+        "citations": [
+          {
+            "sourceId": "6c57a125-bb16-4c2f-96e9-7e204c660eee",
+            "reference": "pull/101",
+            "url": "https://github.com/synthetic-fixture/transport/pull/101",
+            "revision": "1111111111111111111111111111111111111111",
+            "excerpt": "Synthetic demonstration evidence; this is not a real pull request.\nDecision: Retry HTTP 429 and 503 while retriesSoFar is less than 3.",
+            "shortened": false
+          }
+        ],
+        "moreCitations": 0
+      }
+    ]
+  },
+  "whilePending": {
+    "schemaVersion": 1,
+    "scope": {
+      "projectId": "abfa42b9-8671-42a3-86ea-6c4c301769be",
+      "repositoryId": "1001",
+      "branch": "main"
+    },
+    "retrievalId": "c9e70bba-e67e-4583-b8e4-f72d4055079d",
+    "retrievedAt": "2026-10-30T16:00:00.000Z",
+    "outcome": "results",
+    "moreMatches": false,
+    "current": [
+      {
+        "memoryId": "33b44c5a-fd89-4bf2-b6be-901e4aeb67ae",
+        "revision": 1,
+        "type": "decision",
+        "title": "Retry policy",
+        "content": "Retry HTTP 429 and 503 while retriesSoFar is less than 3.",
+        "shortened": false,
+        "approvedBy": "91c474b9-99c2-4ca5-90d2-ecc7fcc8c1f7",
+        "approvedAt": "2026-10-30T16:00:00.000Z",
+        "citations": [
+          {
+            "sourceId": "6c57a125-bb16-4c2f-96e9-7e204c660eee",
+            "reference": "pull/101",
+            "url": "https://github.com/synthetic-fixture/transport/pull/101",
+            "revision": "1111111111111111111111111111111111111111",
+            "excerpt": "Synthetic demonstration evidence; this is not a real pull request.\nDecision: Retry HTTP 429 and 503 while retriesSoFar is less than 3.",
+            "shortened": false
+          }
+        ],
+        "moreCitations": 0
+      }
+    ]
+  },
+  "after": {
+    "schemaVersion": 1,
+    "scope": {
+      "projectId": "abfa42b9-8671-42a3-86ea-6c4c301769be",
+      "repositoryId": "1001",
+      "branch": "main"
+    },
+    "retrievalId": "c1c1f278-a8df-4f3a-9e9b-986828576c2c",
+    "retrievedAt": "2026-10-30T16:00:00.000Z",
+    "outcome": "results",
+    "moreMatches": false,
+    "current": [
+      {
+        "memoryId": "eec9b2e2-e677-430c-851d-23fa4855e7c6",
+        "revision": 1,
+        "type": "decision",
+        "title": "Retry policy",
+        "content": "Retry HTTP 503 only while retriesSoFar is less than 2. Never retry HTTP 429.",
+        "shortened": false,
+        "approvedBy": "91c474b9-99c2-4ca5-90d2-ecc7fcc8c1f7",
+        "approvedAt": "2026-10-30T16:00:00.000Z",
+        "citations": [
+          {
+            "sourceId": "6c57a125-bb16-4c2f-96e9-7e204c660eee",
+            "reference": "pull/101",
+            "url": "https://github.com/synthetic-fixture/transport/pull/101",
+            "revision": "1111111111111111111111111111111111111111",
+            "excerpt": "Synthetic demonstration evidence; this is not a real pull request.\nDecision: Retry HTTP 429 and 503 while retriesSoFar is less than 3.",
+            "shortened": false
+          },
+          {
+            "sourceId": "a15d2fbe-61e6-4bef-aa38-904851f2edb7",
+            "reference": "pull/102",
+            "url": "https://github.com/synthetic-fixture/transport/pull/102",
+            "revision": "2222222222222222222222222222222222222222",
+            "excerpt": "Synthetic demonstration evidence; this is not a real pull request.\nDecision: Retry HTTP 503 only while retriesSoFar is less than 2. Never retry HTTP 429.",
+            "shortened": false
+          }
+        ],
+        "moreCitations": 0
+      }
+    ]
+  },
+  "conflict": {
+    "reason": "The replacement removes HTTP 429 retries and reduces the retry limit.",
+    "memoryId": "33b44c5a-fd89-4bf2-b6be-901e4aeb67ae",
+    "revision": 1
+  },
+  "work": {
+    "id": "655ec31d-3101-4e83-bf94-ab242f361dd3",
+    "title": "Update transport retries",
+    "before": "current",
+    "after": "review_needed",
+    "issues": [
+      {
+        "memoryId": "33b44c5a-fd89-4bf2-b6be-901e4aeb67ae",
+        "pinnedRevision": 1,
+        "reason": "not_approved"
+      },
+      {
+        "memoryId": "33b44c5a-fd89-4bf2-b6be-901e4aeb67ae",
+        "pinnedRevision": 1,
+        "reason": "lifecycle_changed"
+      }
+    ],
+    "staleExportBlocked": true
+  },
+  "agentApprovalBlocked": true,
+  "freshProtocolClients": 2,
+  "receipts": [
+    {
+      "id": "c9e70bba-e67e-4583-b8e4-f72d4055079d",
+      "retrievedAt": "2026-10-30T16:00:00.000Z",
+      "items": [
+        {
+          "memoryId": "33b44c5a-fd89-4bf2-b6be-901e4aeb67ae",
+          "revision": 1,
+          "status": "approved",
+          "title": "Retry policy"
+        }
+      ]
+    },
+    {
+      "id": "c1c1f278-a8df-4f3a-9e9b-986828576c2c",
+      "retrievedAt": "2026-10-30T16:00:00.000Z",
+      "items": [
+        {
+          "memoryId": "eec9b2e2-e677-430c-851d-23fa4855e7c6",
+          "revision": 1,
+          "status": "approved",
+          "title": "Retry policy"
+        }
+      ]
+    },
+    {
+      "id": "72bdf73e-8d4a-49e7-9861-db0846793e04",
+      "retrievedAt": "2026-10-30T16:00:00.000Z",
+      "items": [
+        {
+          "memoryId": "33b44c5a-fd89-4bf2-b6be-901e4aeb67ae",
+          "revision": 1,
+          "status": "approved",
+          "title": "Retry policy"
+        }
+      ]
+    },
+    {
+      "id": "36924bea-1faf-4db3-b90e-ee9de8026ad4",
+      "retrievedAt": "2026-10-30T16:00:00.000Z",
+      "items": []
+    }
+  ]
+}

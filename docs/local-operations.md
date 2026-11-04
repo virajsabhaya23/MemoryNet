@@ -1,14 +1,14 @@
 # Local operations
 
-This build is for local use with public or synthetic data. The sandbox identity picker is not authentication. Optional access-key mode binds one operator to a configured principal; neither mode provides shared sign-in or live GitHub permissions. Keep the app and demo on loopback. See [security boundaries](../SECURITY.md).
+This build is for local use with public or synthetic data. Configured workspaces can open as one local operator without sign-in; this is not shared authentication. The sandbox identity picker is not authentication. Optional access-key mode binds one operator to a configured principal. Optional [GitHub sign-in](prototype.md#github-sign-in) verifies linked accounts and refreshes repository access; it does not provide hosted membership or delegation. Keep the app and demo on loopback. See [security boundaries](../SECURITY.md).
 
 Start with the [README](../README.md) for setup or [the public repository guide](public-evidence-workspace.md) for an isolated import.
 
 ## Configuration
 
-`npm run app` loads `.env.local` if present. The optional variables and defaults are in [`.env.example`](../.env.example). Other scripts require exported environment variables and do not load that file automatically.
+`npm run app`, `npm start`, and `npm run github:link` load `.env.local` if present. The optional variables and defaults are in [`.env.example`](../.env.example). Other scripts require exported environment variables and do not load that file automatically.
 
-`MEMORYNET_PROTOTYPE_CONFIG=off` explicitly selects the sandbox. Otherwise the app uses the config path in that variable, or auto-selects `.local/prototype/config.json` if it exists. A configuration's `dataDir` overrides `MEMORYNET_DATA_DIR`; without one, the database defaults to `.data/memorynet`. Access-key mode requires an existing matching human principal, owner-only configuration/key files and a validated source-checkout catalog. There is no turnkey provisioning command; a fresh checkout uses the sandbox.
+`MEMORYNET_AUTH_MODE=sandbox MEMORYNET_PROTOTYPE_CONFIG=off` explicitly selects the sandbox and disables prepared data selection. Otherwise the app uses the config path in that variable, or auto-selects `.local/prototype/config.json` if it exists. A configuration's `dataDir` overrides `MEMORYNET_DATA_DIR`; without one, `MEMORYNET_DATA_DIR`, a setup workspace profile, or `.data/memorynet` selects the database in that order. Access-key mode requires an existing matching human principal, owner-only configuration/key files and a validated source-checkout catalog. There is no turnkey provisioning command; a fresh checkout uses the sandbox.
 
 Backup/reset/import CLI scripts do **not** read prototype configuration. Set the actual `MEMORYNET_DATA_DIR` explicitly before those operations. To run a restored database in a checkout with an optional prototype config, include `MEMORYNET_PROTOTYPE_CONFIG=off` at app startup.
 
@@ -23,7 +23,7 @@ Backup/reset/import CLI scripts do **not** read prototype configuration. Set the
 
    Replace `.data/personal-trial` with the database you actually intend to preserve; use an absolute path when running outside the checkout. CLI scripts do not load `.env.local` automatically.
 3. Keep that backup and the matching `package-lock.json` in private storage. The snapshot contains all records, evidence, identities, reviews and receipts. It is not encrypted. New backup directories are owner-only on Unix; protect them with OS account permissions and disk encryption as appropriate.
-4. Install the new checkout with `npm ci --ignore-scripts`, run `npm run check`, then start the app. Pending migrations apply at startup. Keep the original version available until the upgrade and data are checked.
+4. Install the new checkout with `npm ci --ignore-scripts`, run `npm run check`, then start the app. Before applying pending migrations to an existing database, startup takes a verified backup in an adjacent `<database>.backups/` directory. `MEMORYNET_UPGRADE_BACKUP=off` opts out. Keep the original version and a separate backup until the upgrade and data are checked.
 
 Backup takes an exclusive database lock, copies the stopped database, and verifies every file against a SHA-256 inventory. A manifest detects accidental corruption; it does not authenticate a snapshot obtained from someone else. The JSON record export is not a replacement for this whole-database backup.
 
@@ -42,7 +42,7 @@ Restore validates the entire inventory before copying and verifies the restored 
 
 Every app/CLI using `openDatabase` takes an adjacent `<database>.memorynet-lock/` directory. Concurrent app, migration, loading, backup and reset attempts fail rather than sharing the database. Normal close releases the lock.
 
-After a crash or forced kill, the lock stays in place. Read its `owner.json`, which contains the process ID, host and creation time. Verify that process and every other process using this data directory have stopped before manually removing **only that named lock directory**. Do not remove a live lock or automate stale-lock deletion. An ambiguous or missing owner record requires the same verification. Old MemoryNet versions and external tools do not use this lock; keep them stopped too.
+After a crash or forced kill, startup reclaims a lock only when its owner is provably stopped on this same computer, rechecking ownership under a recovery guard. Live, foreign-host, unreadable, and ambiguous locks are refused. If manual recovery is necessary, inspect `owner.json` and verify every process using the database has stopped before removing **only that named lock directory**. Never remove a live lock. Old MemoryNet versions and external tools do not use this lock; keep them stopped too.
 
 ## Reset
 
