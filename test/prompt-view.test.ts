@@ -42,7 +42,7 @@ function distance(
 
 test("the stylesheet lights each block at the time the script counts it", () => {
   const css = readFileSync(
-    new URL("../src/web/assets/style.css", import.meta.url),
+    new URL("../src/web/assets/cobalt-system.css", import.meta.url),
     "utf8",
   );
   for (let step = 1; step <= 7; step += 1) {

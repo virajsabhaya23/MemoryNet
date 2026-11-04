@@ -71,7 +71,7 @@ const STATUS_BY_CODE: Readonly<Record<ErrorCode, number>> = {
   unavailable: 503,
 };
 
-const STYLESHEET = ["fonts.css", "style.css", "cobalt.css", "cobalt-system.css"]
+const STYLESHEET = ["fonts.css", "cobalt-system.css"]
   .map((name) => readFileSync(new URL(`./assets/${name}`, import.meta.url), "utf8"))
   .join("\n");
 
