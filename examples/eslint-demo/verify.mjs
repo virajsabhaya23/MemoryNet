@@ -20,7 +20,7 @@ try {
   await cp(start, directory, { recursive: true, filter: (path) => !path.includes("node_modules") });
   await symlink(join(start, "node_modules"), join(directory, "node_modules"), "junction");
   for (const [script, expected] of [["lint", 2], ["test", 0]]) {
-    const baseline = spawnSync(process.platform === "win32" ? "npm.cmd" : "npm", ["run", script], { cwd: directory, encoding: "utf8", timeout: 30_000 });
+    const baseline = spawnSync("npm", ["run", script], { cwd: directory, encoding: "utf8", timeout: 30_000, shell: process.platform === "win32" });
     assert.equal(baseline.error, undefined);
     assert.equal(baseline.status, expected, `${script}: ${baseline.stdout}\n${baseline.stderr}`);
     results.push({ name: `frozen npm run ${script}`, exitCode: baseline.status, expectedExitCode: expected });

@@ -16,7 +16,9 @@ delete environment.ESLINT_FLAGS;
 const execute = (command, args, input, extraEnv = {}) => {
   const result = spawnSync(command, args, {
     cwd: directory, env: { ...environment, ...extraEnv }, input,
-    encoding: "utf8", timeout: 30_000, maxBuffer: 1_000_000
+    encoding: "utf8", timeout: 30_000, maxBuffer: 1_000_000,
+    // npm is a .cmd shim on Windows, which Node refuses to launch without a shell.
+    shell: process.platform === "win32" && command === "npm",
   });
   return { command: [command, ...args], exitCode: result.status, stdout: result.stdout, stderr: result.stderr, error: result.error?.message ?? null };
 };
@@ -32,7 +34,7 @@ try {
   assert.equal(installed.version, "10.0.0", "execute actual ESLint 10.0.0");
   assert(!/ESLINT_USE_FLAT_CONFIG|--no-eslintrc|--no-config-lookup/.test(packageJson.scripts?.lint ?? ""), "remove obsolete switches without disabling lookup");
   for (const script of ["lint", "test"]) {
-    const result = execute(process.platform === "win32" ? "npm.cmd" : "npm", ["run", script]);
+    const result = execute("npm", ["run", script]);
     checks.push({ name: `npm run ${script}`, ...result });
     assert.equal(result.exitCode, 0, `${script} must succeed`);
   }
