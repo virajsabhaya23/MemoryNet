@@ -1,31 +1,67 @@
-# Installed dependencies
+# Installed dependencies and build output
 node_modules/
+coverage/
+dist/
+build/
 
-# Local environment and credentials
+# Credentials and machine-specific client configuration
 .env
 .env.*
 !.env.example
 *.pem
 *.key
+.mcp.json
+.claude/
+.codex/
+.cursor/
+.agents/
+.hackathon/
+.muse/
+AGENTS.md
+CLAUDE.md
 
-# Local data and generated artifacts
+# Local databases, backups, exports, and development artifacts
+.data/
+.local/
+.hallmark/
+website/.hallmark/
 *.db
 *.db-shm
 *.db-wal
 *.sqlite
 *.sqlite3
-coverage/
-dist/
-build/
+*.memorynet-lock/
+*.backups/
+RELEASE-MANIFEST.json
+transfer-staging/
+research/
+demo/
 
 # Editor and operating system files
 .DS_Store
 .idea/
 .vscode/
 
-# Local agent and tooling configuration
-AGENTS.md
-CLAUDE.md
-.agents/
-.hackathon/
-.muse/
+# Only reviewed public documentation belongs in this repository.
+/docs/*
+!/docs/README.md
+!/docs/usage.md
+!/docs/architecture.md
+!/docs/agent-context.md
+!/docs/agent-integration.md
+!/docs/affected-work.md
+!/docs/decision-guard.md
+!/docs/local-operations.md
+!/docs/public-evidence-workspace.md
+!/docs/prototype.md
+!/docs/production-readiness.md
+!/docs/trust.md
+!/docs/github-pages.md
+!/docs/evaluation.md
+!/docs/contracts/
+!/docs/validation/
+!/docs/validation/*.md
+
+# Exploratory artwork is not a runtime asset.
+src/web/assets/brand/logo-concept.png
+src/web/assets/brand/preview.svg
