@@ -190,6 +190,7 @@ export {
 } from "./roles.ts";
 
 export { createWork, listWork, exportWork, closeWork, WorkInputSchema, type WorkInput, type WorkRecord, type WorkAssessment, type WorkIssue } from "./work.ts";
+export { analyzeBrainHealth, buildBriefInput, createBrainBrief, listBrainBriefs, type BrainBrief, type BrainFinding, type BrainFindingKind } from "./brain.ts";
 export {
   formatCheckpoint,
   GENESIS_HASH,

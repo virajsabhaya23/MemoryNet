@@ -1,5 +1,7 @@
+import { requireCaller, requireHuman, requireRole, resolveScope } from "./access.ts";
 import type { MemoryNetContext } from "./context.ts";
-import { listMemories, listReviewQueue } from "./knowledge.ts";
+import { ValidationError } from "./errors.ts";
+import { listMemories, listReviewQueue, type Memory } from "./knowledge.ts";
 import { getNetwork, type NetworkNode } from "./network.ts";
 import { requireId } from "./validation.ts";
 import { listWork } from "./work.ts";
@@ -142,4 +144,92 @@ export async function analyzeBrainHealth(
     }
   }
   return findings;
+}
+
+export interface BrainBrief {
+  id: string;
+  projectId: string;
+  requesterId: string;
+  agentId: string;
+  model: string;
+  content: string;
+  citations: string[];
+  createdAt: Date;
+}
+
+interface BrainBriefRow {
+  id: string;
+  project_id: string;
+  requester_id: string;
+  agent_id: string;
+  model: string;
+  content: string;
+  citations: string[];
+  created_at: Date;
+}
+
+function mapBrief(row: BrainBriefRow): BrainBrief {
+  return {
+    id: row.id,
+    projectId: row.project_id,
+    requesterId: row.requester_id,
+    agentId: row.agent_id,
+    model: row.model,
+    content: row.content,
+    citations: row.citations ?? [],
+    createdAt: row.created_at,
+  };
+}
+
+/** Current approved knowledge a brief may draw on, checked for a human contributor. */
+export async function buildBriefInput(
+  ctx: MemoryNetContext,
+  callerId: string,
+  projectId: string,
+): Promise<{ projectId: string; memories: Memory[] }> {
+  const caller = await requireCaller(ctx.db, callerId);
+  requireHuman(caller, "request a brain brief");
+  const id = requireId(projectId, "projectId");
+  const scope = await resolveScope(ctx.db, { level: "project", id });
+  await requireRole(ctx.db, caller, scope, "contributor", "request a brain brief");
+  const memories = await listMemories(ctx, caller.id, { scope: { level: "project", id }, limit: 50 });
+  return { projectId: id, memories };
+}
+
+/** Stores a brief. Citations that do not resolve to readable project memories are dropped. */
+export async function createBrainBrief(
+  ctx: MemoryNetContext,
+  callerId: string,
+  input: { projectId: string; agentId: string; model: string; content: string; citations: string[] },
+): Promise<BrainBrief> {
+  const { projectId, memories } = await buildBriefInput(ctx, callerId, input.projectId);
+  const content = input.content.trim();
+  if (content.length === 0 || content.length > 20_000) {
+    throw new ValidationError("A brain brief must be between 1 and 20000 characters");
+  }
+  const readable = new Set(memories.map((memory) => memory.id));
+  const citations = [...new Set(input.citations)].filter((id) => readable.has(id));
+  const agentId = requireId(input.agentId, "agentId");
+  const { rows } = await ctx.db.query<BrainBriefRow>(
+    `INSERT INTO brain_briefs (project_id, requester_id, agent_id, model, content, citations, created_at)
+     VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7) RETURNING *`,
+    [projectId, callerId, agentId, input.model, content, JSON.stringify(citations), ctx.now()],
+  );
+  return mapBrief(rows[0]!);
+}
+
+export async function listBrainBriefs(
+  ctx: MemoryNetContext,
+  callerId: string,
+  projectId: string,
+): Promise<BrainBrief[]> {
+  const caller = await requireCaller(ctx.db, callerId);
+  const id = requireId(projectId, "projectId");
+  const scope = await resolveScope(ctx.db, { level: "project", id });
+  await requireRole(ctx.db, caller, scope, "reader", "read brain briefs");
+  const { rows } = await ctx.db.query<BrainBriefRow>(
+    "SELECT * FROM brain_briefs WHERE project_id = $1 ORDER BY created_at DESC, id DESC LIMIT 20",
+    [id],
+  );
+  return rows.map(mapBrief);
 }
