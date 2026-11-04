@@ -28,7 +28,7 @@ import { captureRoutes } from "./routes/capture.ts";
 import { definitionRoutes } from "./routes/definitions.ts";
 import { governanceRoutes } from "./routes/governance.ts";
 import { createDecisionGuardRoutes } from "./routes/decision-guard.ts";
-import { createBrainBriefRoutes } from "./routes/brain.ts";
+import { createBrainBriefRoutes, brainCaptureRoutes } from "./routes/brain.ts";
 import { knowledgeRoutes } from "./routes/knowledge.ts";
 import { memoryRoutes } from "./routes/memories.ts";
 import { myNetworkRoutes } from "./routes/my-network.ts";
@@ -270,6 +270,7 @@ export function createApp(ctx: MemoryNetContext, options: AppOptions): App {
     ...captureRoutes,
     ...(options.decisionGuard ? createDecisionGuardRoutes(options.decisionGuard) : []),
     ...(options.decisionGuard ? createBrainBriefRoutes(options.decisionGuard) : []),
+    ...brainCaptureRoutes,
   ];
 
   function refusePost(rc: RequestContext, access: RouteAccess): string | null {

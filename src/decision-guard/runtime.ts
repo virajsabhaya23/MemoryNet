@@ -1,5 +1,5 @@
 import type { MemoryNetContext } from "../context.ts";
-import { buildBriefInput, createBrainBrief, type BrainBrief } from "../brain.ts";
+import { buildAskContext, buildBriefInput, createBrainBrief, type BrainAnswer, type BrainBrief } from "../brain.ts";
 import { MemoryNetError, ValidationError } from "../errors.ts";
 import { requireId } from "../validation.ts";
 import { GuardProviderError, type GuardProviderDiagnostic, type GuardProviderFailure } from "./errors.ts";
@@ -16,6 +16,8 @@ export interface DecisionGuardWebRuntime {
   createRun(ctx: MemoryNetContext, requesterId: string, input: ExtractionForReviewInput): Promise<GuardRun>;
   /** A labeled AI synthesis of a project's current approved memories; stored append-only, never knowledge. Optional so test doubles and older runtimes stay valid; routes check for it. */
   brief?(ctx: MemoryNetContext, requesterId: string, input: { projectId: string }): Promise<BrainBrief>;
+  /** An ephemeral cited answer from approved knowledge only; nothing is stored as knowledge. */
+  ask?(ctx: MemoryNetContext, requesterId: string, input: { projectId: string; question: string }): Promise<BrainAnswer>;
 }
 
 export interface GuardRuntimeOptions {
@@ -178,6 +180,31 @@ export function createGuardRuntime(options: GuardRuntimeOptions = {}): DecisionG
         content: completion.text,
         citations,
       });
+    },
+    async ask(ctx, requesterId, input) {
+      const context = await buildAskContext(ctx, requesterId, input.projectId, input.question);
+      const selectedProvider = provider();
+      const records = context.memories
+        .map((memory) => `ID: ${memory.memoryId}\nTitle: ${memory.title}\n${memory.content}`)
+        .join("\n\n");
+      const completion = await selectedProvider.complete([
+        {
+          role: "developer",
+          content:
+            "You answer questions for an engineering team using only the approved memories supplied by the user. Cite the memory ID in brackets after each claim, like [ID]. If the supplied records do not answer the question, say exactly that approved knowledge does not cover it. Never invent decisions, people, or dates.",
+        },
+        {
+          role: "user",
+          content: `Question: ${context.question}\n\nApproved memories:\n${records === "" ? "(none matched)" : records}`,
+        },
+      ]);
+      return {
+        question: context.question,
+        answer: completion.text,
+        citations: context.memories.filter((memory) => completion.text.includes(memory.memoryId)).map((memory) => memory.memoryId),
+        retrievalId: context.retrievalId,
+        model: MODEL,
+      };
     },
   };
 }

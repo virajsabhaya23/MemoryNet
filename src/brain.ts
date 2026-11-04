@@ -2,6 +2,7 @@ import { requireCaller, requireHuman, requireRole, resolveScope } from "./access
 import type { MemoryNetContext } from "./context.ts";
 import { ValidationError } from "./errors.ts";
 import { listMemories, listReviewQueue, type Memory } from "./knowledge.ts";
+import { getContext, type ContextMemory } from "./retrieval.ts";
 import { getNetwork, type NetworkNode } from "./network.ts";
 import { requireId } from "./validation.ts";
 import { listWork } from "./work.ts";
@@ -232,4 +233,74 @@ export async function listBrainBriefs(
     [id],
   );
   return rows.map(mapBrief);
+}
+
+export interface BrainAnswer {
+  question: string;
+  answer: string;
+  citations: string[];
+  retrievalId: string;
+  model: string;
+}
+
+/** Approved knowledge an Ask may draw on. The retrieval is logged like every search. */
+export async function buildAskContext(
+  ctx: MemoryNetContext,
+  callerId: string,
+  projectId: string,
+  question: string,
+): Promise<{ projectId: string; question: string; retrievalId: string; memories: ContextMemory[] }> {
+  const caller = await requireCaller(ctx.db, callerId);
+  requireHuman(caller, "ask the brain");
+  const id = requireId(projectId, "projectId");
+  const scope = await resolveScope(ctx.db, { level: "project", id });
+  await requireRole(ctx.db, caller, scope, "reader", "ask the brain");
+  const trimmed = question.trim();
+  if (trimmed.length === 0 || trimmed.length > 500) {
+    throw new ValidationError("Ask a question of up to 500 characters");
+  }
+  const response = await getContext(ctx, caller.id, { projectId: id, query: trimmed });
+  return { projectId: id, question: trimmed, retrievalId: response.retrievalId, memories: response.current };
+}
+
+export interface BrainActivityEvent {
+  at: Date;
+  label: string;
+  href: string;
+  projectName: string | null;
+}
+
+/**
+ * The brain's recent activity in one organization, assembled only from
+ * append-only records the caller may already read. Newest first.
+ */
+export async function listBrainActivity(
+  ctx: MemoryNetContext,
+  callerId: string,
+  organizationId: string,
+  limit = 15,
+): Promise<BrainActivityEvent[]> {
+  const graph = await getNetwork(ctx, callerId, organizationId, { includeUncitedSources: false });
+  const projects = graph.clusters.filter((cluster) => cluster.level === "project");
+  const events: BrainActivityEvent[] = [];
+  for (const cluster of projects) {
+    const recordId = cluster.recordId;
+    const briefs = await listBrainBriefs(ctx, callerId, recordId).catch(() => []);
+    for (const brief of briefs) {
+      events.push({ at: brief.createdAt, label: `Brain brief generated in ${cluster.name}`, href: `/projects/${recordId}#brain`, projectName: cluster.name });
+    }
+    const memories = await listMemories(ctx, callerId, { scope: { level: "project", id: recordId }, limit: 20 }).catch(() => []);
+    for (const memory of memories) {
+      events.push({ at: memory.approvedAt, label: `Approved: ${memory.title}`, href: `/memories/${memory.id}`, projectName: cluster.name });
+    }
+    const runs = await ctx.db.query<{ id: string; created_at: Date }>(
+      "SELECT id, created_at FROM decision_guard_runs WHERE project_id = $1 ORDER BY created_at DESC LIMIT 5",
+      [recordId],
+    ).catch(() => ({ rows: [] as { id: string; created_at: Date }[] }));
+    for (const run of runs.rows) {
+      events.push({ at: run.created_at, label: `Decision Guard run in ${cluster.name}`, href: `/decision-guard/runs/${run.id}`, projectName: cluster.name });
+    }
+  }
+  events.sort((a, b) => b.at.getTime() - a.at.getTime());
+  return events.slice(0, limit);
 }

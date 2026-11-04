@@ -55,7 +55,7 @@ import {
 } from "../views.ts";
 import { definitionsSummary } from "./definitions.ts";
 import { brainSection } from "./brain.ts";
-import { analyzeBrainHealth } from "../../brain.ts";
+import { analyzeBrainHealth, listBrainActivity } from "../../brain.ts";
 import { integrityLink, policySection } from "./governance.ts";
 import {
   exportForm,
@@ -282,6 +282,14 @@ async function home(rc: RequestContext): Promise<WebResponse> {
   }
   activity.sort((a, b) => b.at.getTime() - a.at.getTime());
   const recentActivity = activity.slice(0, 6).map((item) => item.row);
+  const brainActivity = organizations[0]
+    ? (await listBrainActivity(rc.ctx, user.id, organizations[0].id, 8).catch(() => [])).map((event) => ledgerRow({
+        href: event.href,
+        title: event.label,
+        meta: html`Brain activity · ${event.at}`,
+        trailing: html`<span class="badge" data-kind="guidance">Brain</span>`,
+      }))
+    : [];
   const needsYou: SafeHtml[] = [
     ...(pendingReviews > 0 ? [ledgerRow({ href: "/review", title: `${pendingReviews} ${pendingReviews === 1 ? "proposal" : "proposals"} waiting for your review`, meta: "Review queue", trailing: html`<span class="badge" data-state="pending">Review</span>` })] : []),
     ...workRows,
@@ -339,6 +347,12 @@ async function home(rc: RequestContext): Promise<WebResponse> {
         ? html`<section aria-labelledby="activity-title">
             <h2 id="activity-title">Recent activity</h2>
             <ul class="ledger">${recentActivity}</ul>
+          </section>`
+        : ""}
+      ${brainActivity.length > 0
+        ? html`<section aria-labelledby="brain-activity-title">
+            <h2 id="brain-activity-title">Brain activity</h2>
+            <ul class="ledger">${brainActivity}</ul>
           </section>`
         : ""}
       <section class="dash-section" aria-labelledby="orgs-title">

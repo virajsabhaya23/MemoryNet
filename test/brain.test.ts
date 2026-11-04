@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { analyzeBrainHealth, createBrainBrief, listBrainBriefs } from "../src/brain.ts";
+import { analyzeBrainHealth, createBrainBrief, listBrainActivity, listBrainBriefs } from "../src/brain.ts";
 import { createGuardRuntime } from "../src/decision-guard/runtime.ts";
 import { listMemories, listWork } from "../src/index.ts";
 import { useTestDatabase } from "./helpers.ts";
@@ -74,4 +74,34 @@ test("guard runtime brief refuses when no model is configured", async () => {
   const payments = await idOf(env.db, "projects", "payments");
   const runtime = createGuardRuntime({});
   await assert.rejects(() => runtime.brief!(env.ctx, olivia, { projectId: payments }), /Connect a Meta key/);
+});
+
+test("ask refuses when no model is configured and stores nothing", async () => {
+  const app = openApp(env.ctx);
+  await loadExample(app);
+  const olivia = await personId(env.db, "Olivia Owner");
+  const payments = await idOf(env.db, "projects", "payments");
+  const runtime = createGuardRuntime({});
+  await assert.rejects(() => runtime.ask!(env.ctx, olivia, { projectId: payments, question: "What do we know about retries?" }), /Connect a Meta key/);
+  const briefs = await listBrainBriefs(env.ctx, olivia, payments);
+  assert.equal(briefs.length, 0);
+});
+
+test("brain activity assembles briefs and approvals newest first", async () => {
+  const app = openApp(env.ctx);
+  await loadExample(app);
+  const olivia = await personId(env.db, "Olivia Owner");
+  const copilot = await personId(env.db, "Copilot Agent");
+  const acme = await idOf(env.db, "organizations", "acme-synthetic");
+  const payments = await idOf(env.db, "projects", "payments");
+  await createBrainBrief(env.ctx, olivia, {
+    projectId: payments, agentId: copilot, model: "test-model", content: "Activity brief.", citations: [],
+  });
+  const activity = await listBrainActivity(env.ctx, olivia, acme);
+  assert.ok(activity.length > 0);
+  assert.ok(activity.some((event) => event.label.includes("Brain brief")));
+  assert.ok(activity.some((event) => event.label.includes("Approved:")));
+  for (let i = 1; i < activity.length; i += 1) {
+    assert.ok(activity[i - 1]!.at.getTime() >= activity[i]!.at.getTime(), "newest first");
+  }
 });
