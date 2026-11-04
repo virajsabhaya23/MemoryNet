@@ -4,6 +4,7 @@
 // organization, business unit, and project is a hub its knowledge gathers around.
 import { ICON_GLYPHS } from "./icons.js";
 import { createGraphView } from "./graph-engine.js";
+import { cardMeta, wrapTitle } from "./graph-tiers.js";
 import {
   brainRegistry,
   decodeViewState,
@@ -40,40 +41,40 @@ const TIER_TEXT = {
   micro: "Full detail",
 };
 
-/** Colours by kind, and by memory type for memories. Darker variants for the light theme. */
+/** Cobalt kind families (spec §4): knowledge cobalt, evidence teal, guidance violet-slate, people graphite-blue. */
 const PALETTE = {
   dark: {
-    organization: "#c6d6ee",
+    organization: "#b6d3ff",
     business_unit: "#acb7e7",
-    project: "#90b6ff",
-    rule: "#acb7e7",
-    instruction: "#b2bfdc",
-    skill: "#dbc186",
-    agent: "#9bbcdf",
-    memory: "#90b6ff",
-    source: "#8dbbff",
+    project: "#8dbbff",
+    rule: "#c0caf2",
+    instruction: "#acb7e7",
+    skill: "#98a8dd",
+    agent: "#b2bfdc",
+    memory: "#8dbbff",
+    source: "#7bc9bd",
     person: "#acbfd9",
-    agent_account: "#7fd1ff",
-    decision: "#90b6ff",
-    rationale: "#56b6ff",
-    constraint: "#ff8a65",
-    lesson: "#b7f15a",
-    failed_approach: "#ffc145",
-    incident: "#ff5d73",
+    agent_account: "#93a9c4",
+    decision: "#8dbbff",
+    rationale: "#6ea8ff",
+    constraint: "#ffa07e",
+    lesson: "#a8d97c",
+    failed_approach: "#ffc46b",
+    incident: "#ff7d92",
   },
   light: {
     organization: "#536c8e",
     business_unit: "#5968a8",
-    project: "#215dc6",
+    project: "#0861cf",
     rule: "#5968a8",
-    instruction: "#536c8e",
-    skill: "#896518",
-    agent: "#3d6a98",
-    memory: "#215dc6",
+    instruction: "#68739f",
+    skill: "#5968a8",
+    agent: "#4d5f8f",
+    memory: "#0861cf",
     source: "#21766d",
     person: "#536c8e",
-    agent_account: "#1f86b8",
-    decision: "#215dc6",
+    agent_account: "#46617f",
+    decision: "#0861cf",
     rationale: "#1f74c9",
     constraint: "#d1522b",
     lesson: "#5d9a12",
@@ -464,6 +465,30 @@ function start(data) {
     degreeOf.set(edge.from, (degreeOf.get(edge.from) ?? 0) + 1);
     degreeOf.set(edge.to, (degreeOf.get(edge.to) ?? 0) + 1);
   }
+  const citedByOf = new Map(nodes.map((node) => [node.id, 0]));
+  for (const edge of edges) {
+    if (edge.relation === "cites") citedByOf.set(edge.to, (citedByOf.get(edge.to) ?? 0) + 1);
+  }
+  const pendingOfCluster = new Map(clusters.map((cluster) => [cluster.id, cluster.pendingNewDefinitions ?? 0]));
+  for (const node of nodes) {
+    const pending = node.details?.pendingChanges ?? 0;
+    if (pending > 0) pendingOfCluster.set(node.clusterId, (pendingOfCluster.get(node.clusterId) ?? 0) + pending);
+  }
+  function cardOf(node) {
+    const states = statesOf.get(node.id) ?? [];
+    const details = node.details ?? {};
+    const attention = [];
+    if ((details.warnings?.length ?? 0) > 0) attention.push(`${details.warnings.length} ${details.warnings.length === 1 ? "warning" : "warnings"}`);
+    if ((details.pendingChanges ?? 0) > 0) attention.push(`${details.pendingChanges} waiting`);
+    if (states.includes("flagged")) attention.push("Flagged");
+    return {
+      kindLabel: legend.nodes[node.kind]?.label ?? node.kind,
+      statusLabel: states.length > 0 ? (legend.states[states[0]]?.label ?? states[0]) : "Current",
+      lines: wrapTitle(node.label),
+      meta: cardMeta(node, citedByOf.get(node.id) ?? 0, data.generatedAt),
+      attention: attention.length > 0 ? attention.join(" · ") : null,
+    };
+  }
 
   const engineNodes = [
     ...clusters.map((cluster) => ({
@@ -481,6 +506,14 @@ function start(data) {
         (HUB_RADIUS[cluster.level] ?? 9) +
         Math.min(Math.sqrt(weightOf.get(cluster.id) ?? 0) * 0.35, 9),
       weight: weightOf.get(cluster.id) ?? 0,
+      pending: pendingOfCluster.get(cluster.id) ?? 0,
+      card: {
+        kindLabel: legend.levels[cluster.level]?.label ?? cluster.level,
+        statusLabel: cluster.role ?? "",
+        lines: wrapTitle(cluster.name),
+        meta: `${weightOf.get(cluster.id) ?? 0} items`,
+        attention: (pendingOfCluster.get(cluster.id) ?? 0) > 0 ? `${pendingOfCluster.get(cluster.id)} waiting` : null,
+      },
       color: "#888888",
     })),
     ...nodes.map((node) => {
@@ -498,6 +531,7 @@ function start(data) {
         glyph: glyphShape(node.kind, node.details.type),
         badge: badgeOf(node),
         retired: node.status === "retired",
+        card: cardOf(node),
         color: "#888888",
       };
     }),

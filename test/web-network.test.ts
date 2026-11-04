@@ -42,6 +42,11 @@ test("the network page embeds exactly the viewer's network and draws it with sam
   const olivia = await as(app, env.db, "Olivia Owner");
   const reply = await olivia.get(`/orgs/${acme}/network`);
   assert.equal(reply.status, 200);
+  assert.doesNotMatch(reply.body, /\bglass\b/, "HUD panels are flat Cobalt, not glass");
+  assert.match(reply.body, /net-head panel/);
+  const script = await olivia.get("/assets/network.js");
+  assert.match(script.body, /cardMeta/);
+  assert.match(script.body, /wrapTitle/);
   assert.match(
     reply.headers["Content-Security-Policy"] ?? "",
     /script-src 'self'/,

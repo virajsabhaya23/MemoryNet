@@ -247,6 +247,13 @@ body .rail nav a[aria-current="page"] { color: var(--accent-deep); border-color:
 .work-item { margin-bottom: 1rem; }
 .work-item[data-status="review_needed"] { border-left: 3px solid var(--warning); }
 
+/* ————— Graph HUD: flat Cobalt panels ————— */
+body .net-hud.panel, body .myn-hud.panel {
+  background: var(--surface); border: 1px solid var(--rule); border-radius: var(--radius-card);
+  backdrop-filter: none; box-shadow: var(--shadow-panel);
+}
+body .net-panel.network-canvas { background: var(--paper); }
+
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { transition: none !important; animation: none !important; scroll-behavior: auto !important; }
 }

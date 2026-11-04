@@ -595,7 +595,7 @@ async function networkPage(rc: RequestContext): Promise<WebResponse> {
             hidden
           ></div>
 
-          <header class="net-hud net-head glass">
+          <header class="net-hud net-head panel">
             <p class="net-eyebrow">
               <a href="/orgs/${organization.id}">Organization</a>
               <span aria-hidden="true">/</span> Network
@@ -615,11 +615,11 @@ async function networkPage(rc: RequestContext): Promise<WebResponse> {
             ${evidenceView ? html`<p class="hint">Source evidence view. Merged PRs are not locally approved decisions. Up to 200 sources per repository.</p>` : ""}
           </header>
 
-          <div class="net-hud net-topbar glass" id="net-topbar">
+          <div class="net-hud net-topbar panel" id="net-topbar">
             ${toolbar(graph)}
           </div>
 
-          <aside class="net-hud net-inspector glass" id="net-inspector">
+          <aside class="net-hud net-inspector panel" id="net-inspector">
             <button
               type="button"
               class="net-inspector-toggle"
@@ -640,7 +640,7 @@ async function networkPage(rc: RequestContext): Promise<WebResponse> {
             </div>
           </aside>
 
-          <div class="net-hud net-legend-dock glass">
+          <div class="net-hud net-legend-dock panel">
             ${memoryLegend(graph)}
             <p class="net-legend-title">Colours</p>
             <ul class="net-key" id="net-key" aria-label="Colour key"></ul>
@@ -651,7 +651,7 @@ async function networkPage(rc: RequestContext): Promise<WebResponse> {
           </div>
 
           <div class="net-hud net-controls">
-            <div class="net-zoom glass">
+            <div class="net-zoom panel">
               <button
                 type="button"
                 id="net-zoom-in"
@@ -672,7 +672,7 @@ async function networkPage(rc: RequestContext): Promise<WebResponse> {
               >${interfaceIcon("fit")}</button>
             </div>
             <div
-              class="net-minimap glass"
+              class="net-minimap panel"
               id="net-minimap"
               aria-hidden="true"
               hidden
@@ -692,7 +692,7 @@ async function networkPage(rc: RequestContext): Promise<WebResponse> {
           </div>
 
           <div
-            class="net-hud net-compare glass"
+            class="net-hud net-compare panel"
             id="net-compare"
             aria-label="Pinned side by side"
             hidden
