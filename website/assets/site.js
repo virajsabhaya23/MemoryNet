@@ -1,3 +1,15 @@
+document.documentElement.classList.add('js');
+const revealTargets = document.querySelectorAll('.workflow-section, .context-section, .readiness-section, .start-section, .requirements-bar');
+revealTargets.forEach(el => el.classList.add('reveal'));
+if ('IntersectionObserver' in window && !matchMedia('(prefers-reduced-motion: reduce)').matches) {
+  const revealObserver = new IntersectionObserver(entries => entries.forEach(entry => {
+    if (entry.isIntersecting) { entry.target.classList.add('is-visible'); revealObserver.unobserve(entry.target); }
+  }), { threshold: 0.12 });
+  revealTargets.forEach(el => revealObserver.observe(el));
+} else {
+  revealTargets.forEach(el => el.classList.add('is-visible'));
+}
+
 const screens = {
   network: { file: './assets/product-network.png', alt: 'Actual MemoryNet network of original public Vercel repositories and pull request sources.', caption: 'Actual app. Original Vercel repository and PR evidence.' },
   work: { file: './assets/product-work.png', alt: 'Actual review queue of candidates imported from Vercel pull requests.', caption: 'Actual app. Real Vercel PR evidence. Candidates remain pending review.' },

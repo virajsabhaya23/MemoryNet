@@ -287,3 +287,21 @@ body .myn-controls button { display: flex; align-items: center; justify-content:
 .repository-files strong { overflow-wrap: anywhere; }
 .repository-code { max-height: 65svh; overflow: auto; padding: 1.5rem; font-size: .8125rem; line-height: 1.6; }
 .section-heading { display: flex; align-items: center; justify-content: space-between; gap: 1rem; }
+
+/* ————— Premium Cobalt layer (hackathon) —————
+   Gradient primary actions with glow, glass rail, elevated ledger rows.
+   Restrained: depth stays on controls and the network canvas. */
+::selection { background: light-dark(#0861cf2e, #8dbbff38); }
+body:not(.immersive) a.button-link, body:not(.immersive) form.stacked > button[type="submit"], body:not(.immersive) form.inline > button[type="submit"] { background: linear-gradient(135deg, light-dark(#0a68d8, #7db1f5), light-dark(#064ea9, #5b8fd6)); box-shadow: 0 8px 22px -10px light-dark(#0861cf80, #00000080), inset 0 1px 0 light-dark(#ffffff40, #ffffff2a); }
+body:not(.immersive) a.button-link:hover, body:not(.immersive) form.stacked > button[type="submit"]:hover, body:not(.immersive) form.inline > button[type="submit"]:hover { box-shadow: 0 12px 28px -10px light-dark(#0861cf99, #00000090), inset 0 1px 0 light-dark(#ffffff40, #ffffff2a); }
+body .rail { background: linear-gradient(180deg, var(--surface), var(--surface-2)); }
+.org-mark { background: linear-gradient(135deg, var(--accent), var(--accent-strong)); color: var(--on-accent); }
+body:not(.immersive) .cards .org-card { transition: background 160ms var(--ease, ease), transform 160ms ease; }
+body:not(.immersive) .cards .org-card:hover { background: var(--accent-soft); }
+.dash-summary dd { background: linear-gradient(120deg, var(--text), var(--accent-strong)); -webkit-background-clip: text; background-clip: text; color: transparent; }
+body .badge { border: 1px solid var(--border); }
+body .table-wrap { box-shadow: var(--shadow-1); }
+tbody tr { transition: background 120ms ease; }
+tbody tr:hover { background: var(--surface-2); }
+main.workspace .dash-hero h1 { text-wrap: balance; }
+@media (prefers-reduced-motion: reduce) { body:not(.immersive) .cards .org-card, tbody tr { transition: none; } }
