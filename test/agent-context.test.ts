@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { test } from "node:test";
 import { z } from "zod";
 import { parseAgentBinding, readAgentBindingFile, writeAgentBindingFile, type AgentBinding } from "../src/agent-context/binding.ts";
-import { AgentContextSchema, AgentQuerySchema, AGENT_CONTEXT_PATH } from "../src/agent-context/contract.ts";
+import { AGENT_CONTRACT_SCHEMAS, AgentContextSchema, AgentQuerySchema, AGENT_CONTEXT_PATH } from "../src/agent-context/contract.ts";
 import { getAgentContext } from "../src/agent-context/service.ts";
 import { createContext, ForbiddenError, ValidationError } from "../src/index.ts";
 import { createContextBridge } from "../src/mcp/bridge.ts";
@@ -84,12 +84,15 @@ test("local binding generator uses exclusive owner-only files, short expiry and 
     await writeAgentBindingFile(file, input, START);
     const b = await readAgentBindingFile(file);
     assert.equal(Date.parse(b.expiresAt) - START.getTime(), 86_400_000);
-    assert.equal((await stat(file)).mode & 0o777, 0o600);
+    if (process.platform !== "win32") assert.equal((await stat(file)).mode & 0o777, 0o600);
     const original = await readFile(file, "utf8");
     await assert.rejects(writeAgentBindingFile(file, input, START));
     assert.equal(await readFile(file, "utf8"), original);
-    await chmod(file, 0o644);
-    await assert.rejects(readAgentBindingFile(file), ValidationError);
+    // Windows has no POSIX mode bits; bindings there rely on the user profile's owner-only ACLs.
+    if (process.platform !== "win32") {
+      await chmod(file, 0o644);
+      await assert.rejects(readAgentBindingFile(file), ValidationError);
+    }
   } finally { await rm(folder, { recursive: true, force: true }); }
 });
 
@@ -99,8 +102,8 @@ test("bridge refuses non-loopback and ambiguous destinations without making requ
   }
 });
 
-test("checked-in JSON schemas match the executable v1 contract", async () => {
-  for (const [name, schema] of [["agent-query-v1", AgentQuerySchema], ["agent-context-v1", AgentContextSchema]] as const) {
-    assert.deepEqual(JSON.parse(await readFile(new URL(`../docs/contracts/${name}.schema.json`, import.meta.url), "utf8")), z.toJSONSchema(schema));
+test("checked-in JSON schemas match the executable contracts", async () => {
+  for (const [name, schema] of AGENT_CONTRACT_SCHEMAS) {
+    assert.deepEqual(JSON.parse(await readFile(new URL(`../docs/contracts/${name}.schema.json`, import.meta.url), "utf8")), z.toJSONSchema(schema), name);
   }
 });

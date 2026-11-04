@@ -25,7 +25,7 @@ import {
 export const START = new Date("2026-09-24T09:00:00.000Z");
 export const ACCESS_MAX_AGE_MS = 15 * 60 * 1000;
 
-const TRUNCATE_ALL = `TRUNCATE decision_work_pins, decision_work, decision_guard_publications, decision_guard_run_sources,
+const TRUNCATE_ALL = `TRUNCATE ledger_entries, ledger_heads, proposal_approvals, project_policy_revisions, decision_work_pins, decision_work, decision_guard_publications, decision_guard_run_sources,
   decision_guard_runs, audit_events, retrieval_items, retrievals, definition_links,
   definition_revisions, definition_proposal_links, definition_proposals, definitions, memory_reports,
   memory_status_changes, memory_evidence, memory_revisions, memories, proposal_revision_evidence,

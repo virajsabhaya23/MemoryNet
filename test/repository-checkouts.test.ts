@@ -9,7 +9,7 @@ test("source browser reads pinned Git objects and rejects traversal and origin c
  const dir=await mkdtemp(join(tmpdir(),"memorynet-checkout-"));
  try{
   const git=(...args:string[])=>execFileSync("git",["-C",dir,...args],{encoding:"utf8"}).trim();
-  git("init","-q");await mkdir(join(dir,"src"));await writeFile(join(dir,"README.md"),"Original source\n");await writeFile(join(dir,"src/app.ts"),"export const html = '<script>never execute</script>';\n");
+  git("init","-q");git("config","core.autocrlf","false");git("config","core.symlinks","true");await mkdir(join(dir,"src"));await writeFile(join(dir,"README.md"),"Original source\n");await writeFile(join(dir,"src/app.ts"),"export const html = '<script>never execute</script>';\n");
   await symlink("README.md",join(dir,"README.link"));
   git("add",".");git("-c","user.name=Test","-c","user.email=test@example.invalid","commit","-qm","Fixture source");
   git("remote","add","origin","https://github.com/example-public/source.git");const head=git("rev-parse","HEAD");
