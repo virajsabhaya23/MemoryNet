@@ -49,6 +49,14 @@ test("the network page embeds exactly the viewer's network and draws it with sam
   assert.match(script.body, /wrapTitle/);
   assert.match(script.body, /net-timeline ledger/);
   assert.match(script.body, /net-path-chain ledger/);
+  assert.match(script.body, /\/suspend/);
+  assert.match(script.body, /dblclick/);
+  const payload = JSON.parse(/<script type="application\/json" id="network-data">([\s\S]*?)<\/script>/.exec(reply.body)?.[1] ?? "{}");
+  assert.equal(typeof payload.csrf, "string");
+  const memory = payload.nodes?.find((node: any) => node.kind === "memory" && node.status === "current");
+  assert.ok(memory, "payload has a current memory");
+  assert.equal(typeof memory.actions?.suspend, "boolean");
+  assert.equal(memory.actions?.report, true);
   assert.match(
     reply.headers["Content-Security-Policy"] ?? "",
     /script-src 'self'/,
@@ -75,6 +83,7 @@ test("the network page embeds exactly the viewer's network and draws it with sam
   const expected = JSON.parse(
     JSON.stringify(networkPayload(graph, null, null)),
   );
+  expected.csrf = payload.csrf;
   assert.deepEqual(
     dataBlock(reply.body),
     expected,

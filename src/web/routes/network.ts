@@ -1,4 +1,5 @@
 import type { ScopeRef } from "../../access.ts";
+import { ROLE_RANK } from "../../roles.ts";
 import {
   EDGE_RELATIONS,
   getNetwork,
@@ -65,16 +66,38 @@ function previewDetails(node: NetworkNode): NetworkNode["details"] {
       };
 }
 
+/** What the map may offer to do to a record, mirroring the record pages' own rules. */
+function nodeActions(graph: NetworkGraph, node: NetworkNode): Record<string, boolean> {
+  const role = graph.clusters.find((cluster) => cluster.id === node.clusterId)?.role ?? null;
+  const rank = role ? ROLE_RANK[role] : 0;
+  const human = graph.viewer.kind === "human";
+  if (node.kind === "memory") {
+    // Only current (approved) memories are nodes; suspended ones live on the project page.
+    return {
+      report: node.status === "current",
+      suspend: human && node.status === "current" && rank >= ROLE_RANK.contributor,
+      reinstate: false,
+      revoke: human && node.status === "current" && rank >= ROLE_RANK.reviewer,
+    };
+  }
+  if (isDefinitionKind(node.kind)) {
+    return { retire: human && node.status === "active" && rank >= ROLE_RANK.contributor };
+  }
+  return {};
+}
+
 /** What the page's script draws. Built only from the caller's network, so it holds nothing more. */
 export function networkPayload(
   graph: NetworkGraph,
   focus: string | null,
   select: string | null,
+  csrf = "",
 ) {
   const clusterIds = new Set(graph.clusters.map((cluster) => cluster.id));
   const nodeIds = new Set(graph.nodes.map((node) => node.id));
   return {
     generatedAt: graph.generatedAt.toISOString(),
+    csrf,
     organization: graph.organization,
     viewer: {
       id: graph.viewer.id,
@@ -95,6 +118,7 @@ export function networkPayload(
       ...node,
       details: previewDetails(node),
       href: nodeHref(node),
+      actions: nodeActions(graph, node),
     })),
     edges: graph.edges,
     legend: {
@@ -549,6 +573,7 @@ async function networkPage(rc: RequestContext): Promise<WebResponse> {
     graph,
     rc.req.query.get("focus"),
     rc.req.query.get("node"),
+    rc.session?.csrfToken ?? "",
   );
   const count = (kinds: readonly string[]) =>
     graph.nodes.filter((node) => kinds.includes(node.kind)).length;

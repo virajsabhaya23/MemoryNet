@@ -1568,6 +1568,37 @@ function start(data) {
       const prompt = pageLink(`${node.href}/prompt`, "Prompt anatomy");
       if (prompt) holder.append(prompt);
     }
+    const copy = element("button", { type: "button", title: "Copy a link to this view" }, "Copy view link");
+    copy.addEventListener("click", async () => {
+      const url = `${location.origin}${location.pathname}?${encodeViewState(state)}`;
+      try { await navigator.clipboard.writeText(url); } catch { /* clipboard unavailable */ }
+    });
+    holder.append(copy);
+    // Direct governed actions: the same POST flows (and CSRF) as the record pages.
+    const acts = node.actions ?? {};
+    const governedForm = (action, revisionName, revision, label) => {
+      const form = element("form", { method: "post", action, class: "net-governed-form" });
+      const csrf = element("input", { type: "hidden", name: "_csrf", value: data.csrf ?? "" });
+      form.append(csrf);
+      if (revisionName) form.append(element("input", { type: "hidden", name: revisionName, value: String(revision ?? "") }));
+      const reason = element("input", { name: "reason", required: "", maxlength: "500", "aria-label": `Reason for: ${label}`, placeholder: "Reason" });
+      const submit = element("button", { type: "submit" }, label);
+      form.append(reason, submit);
+      return form;
+    };
+    const forms = [];
+    if (node.kind === "memory") {
+      if (acts.suspend) forms.push(governedForm(`/memories/${node.recordId}/suspend`, "expectedRevision", node.details.revision, "Suspend"));
+      if (acts.reinstate) forms.push(governedForm(`/memories/${node.recordId}/reinstate`, "expectedRevision", node.details.revision, "Reinstate"));
+      if (acts.revoke) forms.push(governedForm(`/memories/${node.recordId}/revoke`, "expectedRevision", node.details.revision, "Revoke approval"));
+      if (acts.report) forms.push(governedForm(`/memories/${node.recordId}/report`, null, null, "Report as outdated"));
+    }
+    if (acts.retire) forms.push(governedForm(`/definitions/${node.recordId}/retire`, "baseRevision", node.details.revision, "Propose retiring"));
+    if (forms.length > 0) {
+      const wrap = element("div", { class: "net-governed" });
+      wrap.append(paragraph("Direct actions use the same reviewed flow as the record page.", "hint"), ...forms);
+      holder.append(wrap);
+    }
     return holder;
   }
 
@@ -1908,10 +1939,19 @@ function start(data) {
       facts([["Stored in", edge.table]]),
     );
     why.setAttribute("data-why", "");
+    const edgeActions = element("div", { class: "net-actions" });
+    const traceButton = element("button", { type: "button" }, "Trace where this came from");
+    traceButton.addEventListener("click", () => { select("node", edge.from, { center: true }); showProvenance(edge.from); });
+    const impactButton = element("button", { type: "button" }, "What depends on the target");
+    impactButton.addEventListener("click", () => { select("node", edge.to, { center: true }); toggleImpact(); });
+    const hideButton = element("button", { type: "button" }, `Hide ${info.label} connections`);
+    hideButton.addEventListener("click", () => { state.hideRelations.add(edge.relation); refresh(); renderDetails(); pushHistory(true); });
+    edgeActions.append(traceButton, impactButton, hideButton);
     return [
       header("connection", `Connection: ${info.label}`),
       line,
       paragraph(info.meaning, "hint"),
+      section("Actions", edgeActions),
       why,
     ];
   }
@@ -3338,7 +3378,9 @@ function start(data) {
       userMoved = true;
       frameGroup(target.id);
     } else if (target?.type === "node") {
-      zoomToSelection();
+      const node = nodeById.get(target.id);
+      if (node?.href) location.href = node.href;
+      else zoomToSelection();
     }
   });
 

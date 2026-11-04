@@ -5686,3 +5686,8 @@ body button { min-height: 34px; }
 .repository-files strong { overflow-wrap: anywhere; }
 .repository-code { max-height: 65svh; overflow: auto; padding: 1.5rem; font-size: 0.8125rem; line-height: 1.6; }
 .section-heading { display: flex; align-items: center; justify-content: space-between; gap: 1rem; }
+
+/* ————— Graph governed actions ————— */
+.net-governed { flex-basis: 100%; display: grid; gap: 0.5rem; margin-top: 0.5rem; }
+.net-governed-form { display: flex; gap: 0.5rem; align-items: center; }
+.net-governed-form input[name="reason"] { flex: 1; min-height: 32px; }
