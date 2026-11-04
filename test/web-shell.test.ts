@@ -63,6 +63,23 @@ test("jump menu script is served as a same-origin module", async () => {
   assert.match(script.headers["Content-Type"] ?? "", /text\/javascript/);
 });
 
+test("organization and business-unit pages use the record template", async () => {
+  const app = openApp(env.ctx);
+  await loadExample(app);
+  const olivia = await as(app, env.db, "Olivia Owner");
+  const orgId = await idOf(env.db, "organizations", "acme-synthetic");
+  const org = await olivia.get(`/orgs/${orgId}`);
+  assert.match(org.body, /class="record-head"/);
+  assert.match(org.body, /class="stat-strip"/);
+  assert.doesNotMatch(org.body, /org-hero/);
+  const unitId = await idOf(env.db, "business_units", "platform");
+  assert.match(org.body, new RegExp(`href="/business-units/${unitId}"`));
+  const unit = await olivia.get(`/business-units/${unitId}`);
+  assert.match(unit.body, /class="record-head"/);
+  const projectId = await idOf(env.db, "projects", "checkout");
+  assert.match(unit.body, new RegExp(`href="/projects/${projectId}"`));
+});
+
 test("overview is a triage ledger, not a hero dashboard", async () => {
   const app = openApp(env.ctx);
   await loadExample(app);

@@ -31,7 +31,7 @@ import {
   type Role,
 } from "../../roles.ts";
 import { requireId } from "../../validation.ts";
-import { badge, html, ledgerRow, options, statStrip, table, type SafeHtml } from "../html.ts";
+import { badge, html, ledgerRow, options, recordHead, statStrip, table, type SafeHtml } from "../html.ts";
 import {
   formValue,
   interfaceIcon,
@@ -382,69 +382,38 @@ async function organizationPage(rc: RequestContext): Promise<WebResponse> {
   return page(rc, {
     title: organization.name,
     crumbs: [[organization.name, `/orgs/${organization.id}`]],
-    body: html`<div class="org-hero">
-        <div class="org-hero-main">
-          <span class="org-mark org-mark-lg" aria-hidden="true"
-            >${monogram(organization.name)}</span
-          >
-          <div>
-            <p class="eyebrow">Organization</p>
-            <p class="org-hero-role">
-              Your organization-wide role: ${roleBadge(tree.role)}
-            </p>
-          </div>
-        </div>
-        <dl class="org-stats org-hero-stats">
-          <div>
-            <dt>Business units</dt>
-            <dd>${tree.businessUnits.length}</dd>
-          </div>
-          <div>
-            <dt>Projects</dt>
-            <dd>
-              ${tree.businessUnits.reduce(
-                (sum, unit) => sum + unit.projects.length,
-                0,
-              )}
-            </dd>
-          </div>
-        </dl>
-        <p class="page-actions org-hero-actions">
-          <a class="button-link" href="/orgs/${organization.id}/network${organization.slug.endsWith("-evidence") ? "?evidence=all" : ""}"
-            >Open the network${interfaceIcon("network")}</a
-          >
-          <a class="ghost-link" href="/orgs/${organization.id}/you"
-            >Your network${interfaceIcon("person")}</a
-          >
-          ${integrityLink(organization.id, tree.role)}
-        </p>
-      </div>
+    body: html`${recordHead({
+        kind: "Organization",
+        title: organization.name,
+        status: roleBadge(tree.role),
+        meta: html`${organization.slug} · Your organization-wide role is shown beside the title.`,
+        actions: html`<a class="key key-primary" href="/orgs/${organization.id}/network${organization.slug.endsWith("-evidence") ? "?evidence=all" : ""}">Open the network</a> <a class="key" href="/orgs/${organization.id}/you">Your network</a> ${integrityLink(organization.id, tree.role)}`,
+      })}
+      ${statStrip([
+        ["Business units", tree.businessUnits.length],
+        ["Projects", tree.businessUnits.reduce((sum, unit) => sum + unit.projects.length, 0)],
+        ["Your role", tree.role ? "Assigned" : "None"],
+      ])}
       <section>
         <h2>Business units and projects you can see</h2>
         ${tree.businessUnits.length === 0
           ? html`<p class="empty">None yet.</p>`
-          : html`<div class="unit-grid">
-              ${tree.businessUnits.map(
-                (unit) =>
-                  html`<div class="unit">
-                    <h3>
-                      <a href="/business-units/${unit.id}">${unit.name}</a>
-                      ${roleBadge(unit.role)}
-                    </h3>
-                    ${unit.projects.length > 0
-                      ? html`<ul class="project-chips">
-                          ${unit.projects.map(
-                            (item) =>
-                              html`<li>
-                                <a href="/projects/${item.id}">${item.name}</a>
-                                ${roleBadge(item.role)}
-                              </li>`,
-                          )}
-                        </ul>`
-                      : html`<p class="empty">No projects you can see.</p>`}
-                  </div>`,
-              )}
-            </div>`}
+          : html`<ul class="ledger">
+              ${tree.businessUnits.flatMap((unit) => [
+                ledgerRow({
+                  href: `/business-units/${unit.id}`,
+                  title: unit.name,
+                  meta: html`${unit.projects.length} ${unit.projects.length === 1 ? "project" : "projects"}`,
+                  trailing: roleBadge(unit.role),
+                }),
+                ...unit.projects.map((item) => ledgerRow({
+                  href: `/projects/${item.id}`,
+                  title: item.name,
+                  meta: html`Project in ${unit.name}`,
+                  trailing: roleBadge(item.role),
+                })),
+              ])}
+            </ul>`}
       </section>
       ${await definitionsSummary(rc, scope, organization.id)}
       ${isAdmin
@@ -492,17 +461,24 @@ async function businessUnitPage(rc: RequestContext): Promise<WebResponse> {
       [tree.organization.name, `/orgs/${tree.organization.id}`],
       [unit.name, `/business-units/${unit.id}`],
     ],
-    body: html`<p>Your business-unit role: ${roleBadge(unit.role)}</p>
+    body: html`${recordHead({
+        kind: "Business unit",
+        title: unit.name,
+        status: roleBadge(unit.role),
+        meta: html`${tree.organization.name} · ${unit.projects.length} ${unit.projects.length === 1 ? "project" : "projects"} you can see.`,
+      })}
       <section>
         <h2>Projects you can see</h2>
-        ${table(
-          ["Project", "Your role"],
-          unit.projects.map((item) => [
-            html`<a href="/projects/${item.id}">${item.name}</a>`,
-            roleBadge(item.role),
-          ]),
-          "No projects you can see.",
-        )}
+        ${unit.projects.length === 0
+          ? html`<p class="empty">No projects you can see.</p>`
+          : html`<ul class="ledger">
+              ${unit.projects.map((item) => ledgerRow({
+                href: `/projects/${item.id}`,
+                title: item.name,
+                meta: "Project",
+                trailing: roleBadge(item.role),
+              }))}
+            </ul>`}
       </section>
       ${await definitionsSummary(rc, unitScope, tree.organization.id)}
       ${isAdmin
