@@ -2,6 +2,8 @@
 // The top half is pure (seeding, simulation, label placement) and runs in Node for tests; the
 // bottom half draws on a canvas in the browser. It only ever sees what the page already holds.
 
+import { assignTiers, convexHull, kindShape } from "./graph-tiers.js";
+
 const TAU = Math.PI * 2;
 const GOLDEN_ANGLE = Math.PI * (3 - Math.sqrt(5));
 
@@ -665,49 +667,42 @@ export function unprojectDepth(x, y, z, pose) {
 
 const THEMES = {
   dark: {
-    bg0: "#080e1c",
-    bg1: "#142744",
-    star: "rgb(190 210 255 / 0.5)",
-    edge: 0.28,
-    edgeDim: 0.035,
-    edgeActive: 0.85,
-    glow: 0.8,
-    halo: 0.085,
-    labelBg: "rgb(12 16 24 / 0.78)",
-    labelBorder: "rgb(255 255 255 / 0.08)",
+    bg0: "#131a26",
+    bg1: "#131a26",
+    star: "rgb(154 174 200 / 0.22)",
+    edge: 0.3,
+    edgeDim: 0.05,
+    edgeActive: 0.9,
+    glow: 0,
+    halo: 0.06,
+    labelBg: "rgb(24 32 45 / 0.97)",
+    labelBorder: "#334156",
     labelText: "#e6edf7",
     labelMuted: "#9aaec8",
-    ring: "#ffffff",
-    dimAlpha: 0.13,
-    blend: "lighter",
+    ring: "#b6d3ff",
+    dimAlpha: 0.15,
+    blend: "source-over",
     shadow: null,
   },
   light: {
     bg0: "#f7fafc",
-    bg1: "#fcfdff",
-    star: "rgb(60 50 30 / 0.07)",
+    bg1: "#f7fafc",
+    star: "rgb(23 33 49 / 0.10)",
     edge: 0.32,
     edgeDim: 0.05,
     edgeActive: 0.9,
-    glow: 0.24,
-    halo: 0.07,
-    labelBg: "rgb(255 255 255 / 0.92)",
-    labelBorder: "rgb(20 20 30 / 0.10)",
+    glow: 0,
+    halo: 0.05,
+    labelBg: "rgb(255 255 255 / 0.97)",
+    labelBorder: "#dce3ed",
     labelText: "#172131",
     labelMuted: "#606e81",
-    ring: "#172131",
+    ring: "#064ea9",
     dimAlpha: 0.16,
     blend: "source-over",
-    shadow: "rgb(40 30 20 / 0.22)",
+    shadow: null,
   },
 };
-
-function offscreen(size) {
-  const canvas = document.createElement("canvas");
-  canvas.width = size;
-  canvas.height = size;
-  return canvas;
-}
 
 /**
  * Draws a network on a canvas. `getStyle()` is asked for the current look every frame; the
@@ -733,15 +728,12 @@ export function createGraphView(canvas, options = {}) {
   let frameHandle = 0;
   let lastTime = 0;
   let clock = 0;
-  let starTile = null;
-  const sphereCache = new Map();
-  const glowCache = new Map();
   const textWidth = new Map();
   const glyphCache = new Map();
   let labelBoxes = [];
   const groupShapes = new Map();
   const projected = new Map();
-  let depthEnabled = true, motionEnabled = !reduceMotion, dragging = false;
+  let depthEnabled = false, motionEnabled = !reduceMotion, dragging = false;
   let pointer = { x: 0, y: 0 }, targetPointer = { x: 0, y: 0 };
   let pose = { cx: 0, cy: 0, yaw: .18, pitch: -.12, focal: 1100 };
   const depthOf = id => (hashUnit(`depth:${id}`) - .5) * 190;
@@ -765,71 +757,6 @@ export function createGraphView(canvas, options = {}) {
   document.addEventListener('visibilitychange', () => { if (!document.hidden) { lastTime = 0; dirty = true; schedule(); } });
   }
 
-
-  function sphere(color) {
-    const key = `${themeName}:${color}`;
-    if (sphereCache.has(key)) return sphereCache.get(key);
-    const size = 96;
-    const c = offscreen(size);
-    const g = c.getContext("2d");
-    const r = size / 2 - 1;
-    const gradient = g.createRadialGradient(size * 0.36, size * 0.32, r * 0.05, size / 2, size / 2, r);
-    gradient.addColorStop(0, mix(color, "#ffffff", 0.62));
-    gradient.addColorStop(0.38, mix(color, "#ffffff", 0.12));
-    gradient.addColorStop(0.78, color);
-    gradient.addColorStop(1, mix(color, "#000000", themeName === "dark" ? 0.45 : 0.3));
-    g.fillStyle = gradient;
-    g.beginPath();
-    g.arc(size / 2, size / 2, r, 0, TAU);
-    g.fill();
-    sphereCache.set(key, c);
-    return c;
-  }
-
-  function glow(color) {
-    if (glowCache.has(color)) return glowCache.get(color);
-    const size = 128;
-    const c = offscreen(size);
-    const g = c.getContext("2d");
-    const gradient = g.createRadialGradient(size / 2, size / 2, 0, size / 2, size / 2, size / 2);
-    gradient.addColorStop(0, withAlpha(color, 0.9));
-    gradient.addColorStop(0.25, withAlpha(color, 0.35));
-    gradient.addColorStop(0.6, withAlpha(color, 0.08));
-    gradient.addColorStop(1, withAlpha(color, 0));
-    g.fillStyle = gradient;
-    g.fillRect(0, 0, size, size);
-    glowCache.set(color, c);
-    return c;
-  }
-
-  function stars() {
-    if (starTile && starTile.theme === themeName) return starTile.canvas;
-    const size = 640;
-    const c = offscreen(size);
-    const g = c.getContext("2d");
-    if (themeName === "dark") {
-      for (let i = 0; i < 260; i += 1) {
-        const x = ((i * .754877666 + hashUnit(`jitter-x:${i}`) * .09) % 1) * size;
-        const y = ((i * .569840296 + hashUnit(`jitter-y:${i}`) * .09) % 1) * size;
-        const big = hashUnit(`sb${i}`);
-        g.fillStyle = `rgb(200 215 255 / ${0.08 + big * 0.22})`;
-        g.beginPath();
-        g.arc(x, y, big > 0.94 ? 1.3 : 0.6, 0, TAU);
-        g.fill();
-      }
-    } else {
-      g.fillStyle = theme.star;
-      for (let x = 16; x < size; x += 32) {
-        for (let y = 16; y < size; y += 32) {
-          g.beginPath();
-          g.arc(x, y, 0.9, 0, TAU);
-          g.fill();
-        }
-      }
-    }
-    starTile = { theme: themeName, canvas: c };
-    return c;
-  }
 
   function glyphPaths(shape) {
     if (!shape) return null;
@@ -983,7 +910,7 @@ export function createGraphView(canvas, options = {}) {
   function hitTest(sx, sy) {
     for (let index = labelBoxes.length - 1; index >= 0; index -= 1) {
       const box = labelBoxes[index];
-      if (box.hub && sx >= box.x && sx <= box.x + box.w && sy >= box.y && sy <= box.y + box.h) {
+      if (sx >= box.x && sx <= box.x + box.w && sy >= box.y && sy <= box.y + box.h) {
         return box.id;
       }
     }
@@ -1018,8 +945,6 @@ export function createGraphView(canvas, options = {}) {
     if (typeof document !== 'undefined' && document.hidden) return false;
     if (cameraAnimation) return true;
     if (sim && sim.running() && !reduceMotion) return true;
-    if (!reduceMotion && motionEnabled && style && (style.flow?.size ?? 0) > 0) return true;
-    if (!reduceMotion && motionEnabled && style?.ambient?.length) return true;
     return false;
   }
 
@@ -1064,22 +989,54 @@ export function createGraphView(canvas, options = {}) {
 
   function drawBackground() {
     ctx.setTransform(ratio, 0, 0, ratio, 0, 0);
-    const gradient = ctx.createRadialGradient(width * 0.5, height * 0.42, 0, width * 0.5, height * 0.5, Math.max(width, height) * 0.75);
-    gradient.addColorStop(0, theme.bg1);
-    gradient.addColorStop(1, theme.bg0);
-    ctx.fillStyle = gradient;
+    ctx.fillStyle = theme.bg0;
     ctx.fillRect(0, 0, width, height);
-    const tile = stars();
-    const parallax = themeName === "dark" ? 0.12 : 1;
-    const scale = themeName === "dark" ? 1 : Math.max(0.5, Math.min(2, camera.k));
-    const size = tile.width * scale;
-    const ox = (((camera.x * parallax + (motionEnabled && !reduceMotion ? Math.sin(clock / 22000) * 14 + pointer.x * 12 : 0)) % size) + size) % size;
-    const oy = (((camera.y * parallax + (motionEnabled && !reduceMotion ? Math.cos(clock / 27000) * 10 + pointer.y * 10 : 0)) % size) + size) % size;
-    for (let x = ox - size; x < width; x += size) {
-      for (let y = oy - size; y < height; y += size) {
-        ctx.drawImage(tile, x, y, size, size);
+    // Cobalt dot grid: flat, fixed to the paper, spacing steady at every zoom.
+    const spacing = 28;
+    const ox = ((camera.x % spacing) + spacing) % spacing;
+    const oy = ((camera.y % spacing) + spacing) % spacing;
+    ctx.fillStyle = theme.star;
+    for (let x = ox; x < width; x += spacing) {
+      for (let y = oy; y < height; y += spacing) {
+        ctx.fillRect(x, y, 1.5, 1.5);
       }
     }
+  }
+
+  /** Draws one node's far/mid shape at a world point. Returns nothing; fill/stroke set here. */
+  function drawShape(node, x, y, r) {
+    const shape = kindShape(node.kind);
+    const color = node.retired ? "#8a8f99" : node.color;
+    ctx.beginPath();
+    if (shape === "ring" || shape === "double-ring") {
+      ctx.arc(x, y, r, 0, TAU);
+      ctx.fillStyle = theme.bg0;
+      ctx.fill();
+      ctx.strokeStyle = color;
+      ctx.lineWidth = Math.max(r * 0.3, 1.2 / camera.k);
+      ctx.stroke();
+      if (shape === "double-ring") {
+        ctx.beginPath();
+        ctx.arc(x, y, r * 0.62, 0, TAU);
+        ctx.stroke();
+      }
+      return;
+    }
+    if (shape === "circle") {
+      ctx.arc(x, y, r, 0, TAU);
+    } else {
+      const sides = { diamond: 4, triangle: 3, square: 4, hexagon: 6, pentagon: 5 }[shape] ?? 4;
+      const turn = shape === "diamond" || shape === "square" ? Math.PI / 4 : -Math.PI / 2;
+      for (let i = 0; i < sides; i += 1) {
+        const angle = turn + (i / sides) * TAU + (shape === "square" ? Math.PI / 4 : 0);
+        const px = x + r * Math.cos(angle);
+        const py = y + r * Math.sin(angle);
+        if (i === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py);
+      }
+      ctx.closePath();
+    }
+    ctx.fillStyle = color;
+    ctx.fill();
   }
 
   function computeGroups() {
@@ -1122,7 +1079,28 @@ export function createGraphView(canvas, options = {}) {
       if (center) center.spread += Math.hypot(renderPosition(node.id).x - center.x, renderPosition(node.id).y - center.y);
     }
     for (const [id, c] of centers) {
-      groupShapes.set(id, { x: c.x, y: c.y, r: (c.spread / c.n) * 1.6 + 30, n: c.n });
+      groupShapes.set(id, { x: c.x, y: c.y, r: (c.spread / c.n) * 1.6 + 30, n: c.n, points: [] });
+    }
+    // Territory outlines: the hull of member points plus the hub, padded outward.
+    for (let i = 0; i < nodes.length; i += 1) {
+      const node = nodes[i];
+      if (!sim.active[i]) continue;
+      if (style?.visible && !style.visible.has(node.id)) continue;
+      const groupId = node.hub ? node.id : node.group;
+      const shape = groupShapes.get(groupId);
+      if (!shape) continue;
+      const point = renderPosition(node.id);
+      if (point) shape.points.push({ x: point.x, y: point.y });
+    }
+    for (const shape of groupShapes.values()) {
+      if (shape.points.length < 3) { shape.hull = null; continue; }
+      const hull = convexHull(shape.points);
+      shape.hull = hull.map((point) => {
+        const dx = point.x - shape.x;
+        const dy = point.y - shape.y;
+        const length = Math.hypot(dx, dy) || 1;
+        return { x: point.x + (dx / length) * 22, y: point.y + (dy / length) * 22 };
+      });
     }
   }
 
@@ -1154,35 +1132,29 @@ export function createGraphView(canvas, options = {}) {
     const inView = (x, y, r) => x + r >= view.x0 && x - r <= view.x1 && y + r >= view.y0 && y - r <= view.y1;
     const isShown = (id) => !visible || visible.has(id);
 
-    // Group clouds: a soft nebula behind each hub's members.
+    // Territories: flat tinted hulls behind each hub's members.
     computeGroups();
-    ctx.globalCompositeOperation = themeName === "dark" ? "lighter" : "source-over";
     for (const [id, shape] of groupShapes) {
       const hub = byId.get(id);
-      if (!hub || !isShown(id) || !inView(shape.x, shape.y, shape.r)) continue;
+      if (!hub || !isShown(id) || !shape.hull || !inView(shape.x, shape.y, shape.r)) continue;
       const heat = s.heat?.get(id) ?? 0;
       const focused = s.focusGroups?.has(id) ?? false;
-      let alpha = theme.halo * (1 + heat * 2.4) * (focused ? 1.8 : 1);
-      if (highlighting && !focused && !near.has(id)) alpha *= 0.35;
-      const gradient = ctx.createRadialGradient(shape.x, shape.y, 0, shape.x, shape.y, shape.r);
-      gradient.addColorStop(0, withAlpha(hub.color, alpha));
-      gradient.addColorStop(0.7, withAlpha(hub.color, alpha * 0.45));
-      gradient.addColorStop(1, withAlpha(hub.color, 0));
-      ctx.fillStyle = gradient;
+      let alpha = 0.05 + heat * 0.08;
+      if (focused) alpha = 0.11;
+      if (highlighting && !focused && !near.has(id)) alpha *= 0.4;
+      ctx.fillStyle = withAlpha(hub.color, alpha);
       ctx.beginPath();
-      ctx.arc(shape.x, shape.y, shape.r, 0, TAU);
+      shape.hull.forEach((point, index) => {
+        if (index === 0) ctx.moveTo(point.x, point.y); else ctx.lineTo(point.x, point.y);
+      });
+      ctx.closePath();
       ctx.fill();
-      if (focused) {
-        ctx.globalCompositeOperation = "source-over";
-        ctx.strokeStyle = withAlpha(hub.color, 0.55);
-        ctx.lineWidth = 1.2 / k;
-        ctx.setLineDash([6 / k, 5 / k]);
-        ctx.stroke();
-        ctx.setLineDash([]);
-        ctx.globalCompositeOperation = themeName === "dark" ? "lighter" : "source-over";
-      }
+      ctx.strokeStyle = withAlpha(hub.color, focused ? 0.55 : 0.28);
+      ctx.lineWidth = 1 / k;
+      ctx.setLineDash([6 / k, 5 / k]);
+      ctx.stroke();
+      ctx.setLineDash([]);
     }
-    ctx.globalCompositeOperation = "source-over";
 
     // Connections: faint everywhere, bright along the selection.
     const lineWidth = Math.max(0.5, 0.9 / Math.sqrt(k)) / k * Math.min(1.6, Math.sqrt(k) + 0.3);
@@ -1248,41 +1220,7 @@ export function createGraphView(canvas, options = {}) {
       }
     }
 
-    // Light travelling along connections: the selection's, and a quiet sample everywhere.
-    if (!reduceMotion && motionEnabled) {
-      const particles = [];
-      for (const { link, a, b } of bright) particles.push({ link, a, b, strong: true });
-      if (s.ambient && !highlighting) {
-        for (const link of s.ambient) {
-          if (!isShown(link.source) || !isShown(link.target)) continue;
-          const a = renderPosition(link.source);
-          const b = renderPosition(link.target);
-          if (a && b && inView((a.x + b.x) / 2, (a.y + b.y) / 2, Math.hypot(a.x - b.x, a.y - b.y) / 2)) {
-            particles.push({ link, a, b, strong: false });
-          }
-        }
-      }
-      ctx.globalCompositeOperation = themeName === "dark" ? "lighter" : "source-over";
-      for (const { link, a, b, strong } of particles) {
-        const color = byId.get(link.source)?.color ?? "#ffffff";
-        const sprite = glow(color);
-        const length = Math.hypot(b.x - a.x, b.y - a.y) || 1;
-        const speed = strong ? 0.13 : 0.085;
-        const count = strong ? 3 : 2;
-        for (let n = 0; n < count; n += 1) {
-          const t = ((clock / 1000) * speed * (180 / Math.max(length, 60)) * 3 + hashUnit(link.id) + n / count) % 1;
-          const x = a.x + (b.x - a.x) * t;
-          const y = a.y + (b.y - a.y) * t;
-          const size = (strong ? 9 : 6) / Math.sqrt(k) / Math.max(1, Math.sqrt(k));
-          ctx.globalAlpha = strong ? 0.95 : 0.55;
-          ctx.drawImage(sprite, x - size, y - size, size * 2, size * 2);
-        }
-      }
-      ctx.globalAlpha = 1;
-      ctx.globalCompositeOperation = "source-over";
-    }
-
-    // Nodes: a glow behind, a lit sphere in front.
+    // Nodes: flat tiered shapes — dots far, anchors for chips/cards near.
     const drawOrder = [];
     for (let i = 0; i < nodes.length; i += 1) {
       const node = nodes[i];
@@ -1293,49 +1231,23 @@ export function createGraphView(canvas, options = {}) {
       const dim = highlighting && !near.has(node.id);
       drawOrder.push({ node, x, y, r, dim, i, z: point.z });
     }
-    // Dim first, then lit, then the selection on top.
-    drawOrder.sort((a, b) => Number(!a.dim) - Number(!b.dim) || b.z - a.z || a.r - b.r);
-    const screenMin = 1.2;
-    if (themeName === "dark") {
-      ctx.globalCompositeOperation = "lighter";
-      for (const item of drawOrder) {
-        if (item.dim) continue;
-        const sr = item.r * k;
-        if (sr < screenMin) continue;
-        const selectedNode = s.selected === item.node.id;
-        const g = (item.node.hub ? 3.6 : 2.8) * item.r * (selectedNode ? 1.5 : 1);
-        ctx.globalAlpha = theme.glow * (item.node.hub ? 0.9 : 0.6) * (highlighting ? 1.2 : 1);
-        ctx.drawImage(glow(item.node.color), item.x - g, item.y - g, g * 2, g * 2);
-      }
-      ctx.globalAlpha = 1;
-      ctx.globalCompositeOperation = "source-over";
-    }
+    drawOrder.sort((a, b) => Number(!a.dim) - Number(!b.dim) || a.r - b.r);
+    const tierOf = assignTiers(drawOrder.map((item) => ({
+      id: item.node.id,
+      hub: item.node.hub,
+      inViewport: true,
+      priority: item.node.hub ? 6000 + (item.node.weight ?? 0) : 1000 + (item.node.weight ?? 0) + item.r,
+      selected: s.selected === item.node.id,
+      hovered: s.hovered === item.node.id,
+      pinned: s.pins?.has(item.node.id) ?? false,
+    })), k);
+    for (const item of drawOrder) item.tier = tierOf.get(item.node.id) ?? "far";
     for (const item of drawOrder) {
       const { node, x, y, r, dim } = item;
       const sr = r * k;
       ctx.globalAlpha = dim ? theme.dimAlpha : node.retired ? 0.55 : 1;
-      if (sr < screenMin) {
-        ctx.fillStyle = node.color;
-        const size = screenMin / k;
-        ctx.fillRect(x - size, y - size, size * 2, size * 2);
-        continue;
-      }
-      if (theme.shadow && !dim) {
-        ctx.fillStyle = theme.shadow;
-        ctx.beginPath();
-        ctx.ellipse(x + r * 0.15, y + r * 0.85, r * 0.85, r * 0.32, 0, 0, TAU);
-        ctx.fill();
-      }
-      ctx.drawImage(sphere(node.retired ? "#8a8f99" : node.color), x - r, y - r, r * 2, r * 2);
-      if (node.hub && !dim && depthEnabled) {
-        ctx.strokeStyle = withAlpha(node.color, themeName === 'dark' ? .48 : .28);
-        ctx.lineWidth = 1 / k;
-        ctx.beginPath(); ctx.ellipse(x, y + r * .2, r * 1.65, r * .52, -.3, 0, TAU); ctx.stroke();
-        ctx.strokeStyle = withAlpha(themeName === 'dark' ? '#e4efff' : '#ffffff', .75);
-        ctx.beginPath(); ctx.arc(x, y, r * .86, -2.7, -1.1); ctx.stroke();
-      }
-
-      if (sr >= 9 && !dim) {
+      drawShape(node, x, y, Math.max(r, 2.5 / k));
+      if ((item.tier === "near" || node.hub) && !dim && sr >= 9) {
         const paths = glyphPaths(node.glyph);
         if (paths) {
           ctx.save();
@@ -1395,8 +1307,33 @@ export function createGraphView(canvas, options = {}) {
     }
     ctx.globalAlpha = 1;
 
-    // Names: a pill above each node that fits, the most important first.
+    // Chips and cards in screen space, rationed like labels; territory tabs first.
     ctx.setTransform(ratio, 0, 0, ratio, 0, 0);
+    for (const [id, shape] of groupShapes) {
+      const hub = byId.get(id);
+      if (!hub || !shape.hull || !isShown(id)) continue;
+      const screen = shape.hull.map((point) => ({ x: point.x * k + camera.x, y: point.y * k + camera.y }));
+      const left = Math.min(...screen.map((point) => point.x));
+      const top = Math.min(...screen.map((point) => point.y));
+      if (left > width || top > height || left < -200 || top < -40) continue;
+      const hubNode = hub;
+      const pending = hubNode.pending ?? 0;
+      const text = `${hubNode.label} · ${shape.n}${pending > 0 ? ` · ${pending} waiting` : ""}`;
+      const font = `500 11px ${FONT}`;
+      const w = measure(text, font) + 16;
+      ctx.beginPath();
+      ctx.roundRect(left, top, w, 20, 5);
+      ctx.fillStyle = theme.labelBg;
+      ctx.fill();
+      ctx.strokeStyle = withAlpha(hubNode.color, 0.5);
+      ctx.lineWidth = 1;
+      ctx.stroke();
+      ctx.font = font;
+      ctx.fillStyle = theme.labelText;
+      ctx.textBaseline = "middle";
+      ctx.textAlign = "left";
+      ctx.fillText(text, left + 8, top + 10.5);
+    }
     const candidates = [];
     const showNames = s.labels !== false;
     for (const item of drawOrder) {
@@ -1406,15 +1343,29 @@ export function createGraphView(canvas, options = {}) {
       const sr = r * k;
       const selectedNode = s.selected === node.id;
       const hoveredNode = s.hovered === node.id;
+      const tier = item.tier ?? "far";
+      if (tier === "near" && node.card && !dim) {
+        const w = width < 480 ? 224 : 248;
+        const h = node.card.attention ? 94 : 78;
+        candidates.push({
+          id: node.id, hub: node.hub, card: node.card, color: node.color,
+          selected: selectedNode, hovered: hoveredNode,
+          priority: selectedNode ? 30000 : s.pins?.has(node.id) ? 25000 : node.hub ? 20000 : 15000 + (node.weight ?? 0),
+          force: selectedNode || hoveredNode,
+          x: sx - w / 2, y: sy - h - 14, w, h,
+        });
+        continue;
+      }
       let priority = -1;
       if (selectedNode) priority = 10000;
       else if (hoveredNode) priority = 9000;
       else if (!showNames) continue;
       else if (dim) continue;
+      else if (tier === "far" && !node.hub && !s.pins?.has(node.id)) continue;
       else if (s.pins?.has(node.id)) priority = 8000;
       else if (node.hub) priority = 6000 - node.depth * 500 + Math.min(node.weight ?? 0, 400);
       else if (highlighting && near.has(node.id)) priority = 4000 + sr;
-      else if (sr >= (node.labelAt ?? 7)) priority = 1000 + sr * 10 + (node.weight ?? 0);
+      else if (tier === "mid" || sr >= (node.labelAt ?? 7)) priority = 1000 + sr * 10 + (node.weight ?? 0);
       if (priority < 0) continue;
       const hub = node.hub;
       const font = hub ? `600 ${node.depth === 0 ? 13 : 12}px ${FONT}` : `500 11px ${FONT}`;
@@ -1439,24 +1390,46 @@ export function createGraphView(canvas, options = {}) {
     }
     labelBoxes = pickLabels(candidates, { width, height, limit: s.labelLimit ?? 260 });
     for (const box of labelBoxes) {
+      if (box.card) {
+        const { card } = box;
+        ctx.beginPath();
+        ctx.roundRect(box.x, box.y, box.w, box.h, 8);
+        ctx.fillStyle = theme.labelBg;
+        ctx.fill();
+        ctx.strokeStyle = box.selected ? theme.ring : theme.labelBorder;
+        ctx.lineWidth = box.selected ? 1.5 : 1;
+        ctx.stroke();
+        ctx.fillStyle = box.color;
+        ctx.fillRect(box.x, box.y + 8, 3, box.h - 16);
+        ctx.textBaseline = "alphabetic";
+        ctx.textAlign = "left";
+        ctx.font = `600 10px ${FONT}`;
+        ctx.fillStyle = theme.labelMuted;
+        ctx.fillText(`${card.kindLabel} · ${card.statusLabel}`, box.x + 12, box.y + 17);
+        ctx.font = `500 12.5px ${FONT}`;
+        ctx.fillStyle = theme.labelText;
+        card.lines.forEach((line, index) => {
+          ctx.fillText(line, box.x + 12, box.y + 35 + index * 15);
+        });
+        ctx.font = `11px ${FONT}`;
+        ctx.fillStyle = theme.labelMuted;
+        ctx.fillText(card.meta ?? "", box.x + 12, box.y + 35 + card.lines.length * 15 + 4);
+        if (card.attention) {
+          ctx.fillStyle = themeName === "dark" ? "#ffb547" : "#9a5700";
+          ctx.fillText(card.attention, box.x + 12, box.y + box.h - 8);
+        }
+        continue;
+      }
       const radius = 5;
       ctx.beginPath();
       ctx.roundRect(box.x, box.y, box.w, box.h, radius);
-      if (box.selected) {
-        ctx.fillStyle = theme.labelBg;
-        ctx.fill();
-        ctx.strokeStyle = box.color; ctx.lineWidth = 1.5; ctx.stroke();
-        ctx.fillStyle = theme.labelText;
-      } else {
-        ctx.fillStyle = theme.labelBg;
-        ctx.fill();
-        ctx.strokeStyle = box.hub ? withAlpha(box.color, 0.55) : theme.labelBorder;
-        ctx.lineWidth = 1;
-        ctx.stroke();
-        ctx.fillStyle = box.hub ? theme.labelText : box.hovered ? theme.labelText : theme.labelMuted;
-        if (!box.hub) ctx.fillStyle = theme.labelText;
-      }
+      ctx.fillStyle = theme.labelBg;
+      ctx.fill();
+      ctx.strokeStyle = box.selected ? box.color : box.hub ? withAlpha(box.color, 0.55) : theme.labelBorder;
+      ctx.lineWidth = box.selected ? 1.5 : 1;
+      ctx.stroke();
       ctx.font = box.font;
+      ctx.fillStyle = theme.labelText;
       ctx.textBaseline = "middle";
       ctx.textAlign = "center";
       ctx.fillText(box.text, box.x + box.w / 2, box.y + box.h / 2 + 0.5);

@@ -90,6 +90,7 @@ const FONTS = new Map([
 const SCRIPTS: ReadonlyMap<string, string> = new Map(
   [
     "shell.js",
+    "graph-tiers.js",
     "network.js",
     "icons.js",
     "graph-engine.js",

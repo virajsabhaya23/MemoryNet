@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import { test } from "node:test";
 import {
   clip,
@@ -294,4 +295,14 @@ test("small helpers", () => {
   assert.equal(clip("short"), "short");
   assert.equal(clip("a".repeat(40), 10), `${"a".repeat(9)}…`);
   assert.equal(withAlpha("#ff8000", 0.5), "rgb(255 128 0 / 0.5)");
+});
+
+test("the draw layer is flat Cobalt: no spheres, glow sprites, or light particles", () => {
+  const source = readFileSync(new URL("../src/web/assets/graph-engine.js", import.meta.url), "utf8");
+  assert.doesNotMatch(source, /drawImage\(glow\(/);
+  assert.doesNotMatch(source, /drawImage\(sphere\(/);
+  assert.doesNotMatch(source, /function sphere\(/);
+  assert.doesNotMatch(source, /function glow\(/);
+  assert.match(source, /assignTiers/);
+  assert.match(source, /convexHull/);
 });
