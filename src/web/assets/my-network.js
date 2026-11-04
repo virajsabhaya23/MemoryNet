@@ -2,6 +2,7 @@
 // Opening a place asks this site (same origin only) for what it holds and grows the map around it, while
 // everything already on screen keeps its place. The page only ever shows what the server sent.
 import { createGraphView } from "./graph-engine.js";
+import { wrapTitle } from "./graph-tiers.js";
 import {
   ACCENT,
   buildGraph,
@@ -129,6 +130,15 @@ function start(data) {
       theme: engine.theme,
     });
     byId = new Map(graph.nodes.map((node) => [node.id, node]));
+    for (const node of graph.nodes) {
+      node.card = {
+        kindLabel: node.kind === "you" ? "You" : (FAMILY_WORDS[node.family] ?? node.kind ?? ""),
+        statusLabel: node.item?.owned ? "Yours" : "",
+        lines: wrapTitle(node.label ?? ""),
+        meta: node.item?.kind ?? node.place?.level ?? "",
+        attention: node.item?.owned ? "Owned by you" : null,
+      };
+    }
     engine.setData(
       graph,
       grow
