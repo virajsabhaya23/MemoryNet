@@ -35,6 +35,7 @@ import {
   ledgerRow,
   options,
   preview,
+  recordHead,
   table,
   type SafeHtml,
 } from "../html.ts";
@@ -522,12 +523,12 @@ async function proposalPage(rc: RequestContext): Promise<WebResponse> {
   return page(rc, {
     title: proposal.title,
     crumbs: [...projectCrumbs(view), ["Proposal", `/proposals/${proposal.id}`]],
-    body: html`<p>
-        ${proposalStatusBadge(proposal.status)}
-        ${badge(typeLabel(proposal.type), "type")}
-        <span class="muted">version ${proposal.revision}</span>
-        ${flagBadges(proposal.flags)}
-      </p>
+    body: html`${recordHead({
+        kind: typeLabel(proposal.type),
+        title: proposal.title,
+        status: html`${proposalStatusBadge(proposal.status)} ${flagBadges(proposal.flags)}`,
+        meta: html`Version ${proposal.revision} · Proposed by ${nameOf(names, proposal.proposedBy)} · Project ${view.project.name}`,
+      })}
       <p class="hint">A proposal is not knowledge until it is approved.</p>
       ${modelLinked && pending
         ? html`<p class="hint">This model-generated proposal preserves its original sources and version.

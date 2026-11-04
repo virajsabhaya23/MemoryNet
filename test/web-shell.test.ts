@@ -77,6 +77,24 @@ test("project page is a tabbed workspace with ledger knowledge", async () => {
   assert.match(project.body, /class="ledger/);
 });
 
+test("definition and proposal pages use the record template", async () => {
+  const app = openApp(env.ctx);
+  await loadExample(app);
+  const olivia = await as(app, env.db, "Olivia Owner");
+  const projectId = await idOf(env.db, "projects", "payments");
+  const list = await olivia.get(`/scopes/project/${projectId}/definitions`);
+  const definitionId = /href="\/definitions\/([0-9a-f-]{36})"/.exec(list.body)?.[1];
+  assert.ok(definitionId, "scope definitions list links a definition");
+  const definition = await olivia.get(`/definitions/${definitionId}`);
+  assert.match(definition.body, /class="record-head"/);
+  const rhea = await as(app, env.db, "Rhea Reviewer");
+  const queue = await rhea.get("/review");
+  const proposalId = /href="\/proposals\/([0-9a-f-]{36})"/.exec(queue.body)?.[1];
+  assert.ok(proposalId, "review queue links a proposal");
+  const proposal = await rhea.get(`/proposals/${proposalId}`);
+  assert.match(proposal.body, /class="record-head"/);
+});
+
 test("memory and source pages use the record template", async () => {
   const app = openApp(env.ctx);
   await loadExample(app);

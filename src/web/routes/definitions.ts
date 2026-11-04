@@ -29,7 +29,7 @@ import {
 } from "../../organizations.ts";
 import { ROLE_RANK, type Role } from "../../roles.ts";
 import { diffItems, diffLines, type DiffLine } from "../../text-diff.ts";
-import { badge, html, options, table, type SafeHtml } from "../html.ts";
+import { badge, html, options, recordHead, table, type SafeHtml } from "../html.ts";
 import {
   formValue,
   page,
@@ -806,23 +806,13 @@ async function definitionPage(rc: RequestContext): Promise<WebResponse> {
   return page(rc, {
     title: definition.name,
     crumbs: [...view.crumbs, ["Definitions", definitionsPath(view.ref)]],
-    body: html`<p>
-        ${kindBadge(definition.kind)} ${statusBadge(definition.status)}
-        <span class="muted">version ${definition.revision}</span> ${flagBadges(
-          definition.flags,
-        )}
-        ·
-        <a
-          href="${networkPath(definition.organizationId, {
-            node: `definition:${definition.id}`,
-          })}"
-          >Show in the network</a
-        >
-        ·
-        <a href="/definitions/${definition.id}/prompt"
-          >See its prompt anatomy</a
-        >
-      </p>
+    body: html`${recordHead({
+        kind: kindBadge(definition.kind),
+        title: definition.name,
+        status: html`${statusBadge(definition.status)} ${flagBadges(definition.flags)}`,
+        meta: html`Version ${definition.revision} · ${LEVEL_INFO[view.ref.level].label}: ${view.name} · Owner ${nameOf(names, definition.ownerId)}`,
+        actions: html`<a class="key" href="${networkPath(definition.organizationId, { node: `definition:${definition.id}` })}">Show in the network</a> <a class="key" href="/definitions/${definition.id}/prompt">See its prompt anatomy</a>`,
+      })}
       <p class="hint">${info.meaning}</p>
       ${definition.status === "retired"
         ? html`<p class="warning">
@@ -1221,13 +1211,12 @@ async function proposalPage(rc: RequestContext): Promise<WebResponse> {
       ["Definitions", definitionsPath(view.ref)],
       ["Proposal", `/definition-proposals/${proposal.id}`],
     ],
-    body: html`<p>
-        ${badge(proposal.status, PROPOSAL_VARIANT[proposal.status])}
-        ${badge(ACTION_LABEL[proposal.action], "neutral")}
-        ${kindBadge(proposal.kind)}
-        <span class="muted">proposal version ${proposal.revision}</span>
-        ${flagBadges(proposal.flags)}
-      </p>
+    body: html`${recordHead({
+        kind: kindBadge(proposal.kind),
+        title: proposal.name,
+        status: html`${badge(proposal.status, PROPOSAL_VARIANT[proposal.status])} ${badge(ACTION_LABEL[proposal.action], "neutral")} ${flagBadges(proposal.flags)}`,
+        meta: html`Proposal version ${proposal.revision} · ${LEVEL_INFO[view.ref.level].label}: ${view.name} · Owner ${nameOf(names, proposal.ownerId)}`,
+      })}
       <p class="hint">
         A proposal is not guidance until a different reviewer approves it.
       </p>
