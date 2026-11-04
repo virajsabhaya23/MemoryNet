@@ -25,6 +25,7 @@ import {
   html,
   options,
   preview,
+  recordHead,
   table,
   type SafeHtml,
 } from "../html.ts";
@@ -285,19 +286,13 @@ async function memoryPage(rc: RequestContext): Promise<WebResponse> {
   return page(rc, {
     title: memory.title,
     crumbs: projectCrumbs(view),
-    body: html`<p>
-        ${memoryStatusBadge(memory.status)}
-        ${badge(typeLabel(memory.type), "type")}
-        <span class="muted">version ${memory.revision}</span>
-        <a href="/memories/${memory.id}/history">History</a>
-        ${memory.status === "approved"
-          ? html`<a
-              href="/orgs/${view.tree.organization
-                .id}/network?node=${encodeURIComponent(`memory:${memory.id}`)}"
-              >Show in the network</a
-            >`
-          : ""}
-      </p>
+    body: html`${recordHead({
+        kind: typeLabel(memory.type),
+        title: memory.title,
+        status: memoryStatusBadge(memory.status),
+        meta: html`Version ${memory.revision} · Owner ${nameOf(names, memory.ownerId)} · Approved by ${nameOf(names, memory.approvedBy)} on ${memory.approvedAt}`,
+        actions: html`<a class="key" href="/memories/${memory.id}/history">History</a>${memory.status === "approved" ? html` <a class="key" href="/orgs/${view.tree.organization.id}/network?node=${encodeURIComponent(`memory:${memory.id}`)}">Show in the network</a>` : ""}`,
+      })}
       ${statusNotice(history, names)}
       ${applicabilityView(memory.applicability, rc.ctx.now())}
       <section>

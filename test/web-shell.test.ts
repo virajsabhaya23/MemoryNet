@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { listReviewQueue } from "../src/index.ts";
+import { listMemories, listReviewQueue, listSources } from "../src/index.ts";
 import { scopeFromPath } from "../src/web/kit.ts";
 import { useTestDatabase } from "./helpers.ts";
 import { as, idOf, loadExample, openApp, personId, TestBrowser } from "./web-helpers.ts";
@@ -75,6 +75,22 @@ test("project page is a tabbed workspace with ledger knowledge", async () => {
   assert.match(project.body, new RegExp(`href="/projects/${projectId}/retrievals"`));
   assert.match(project.body, /id="current-knowledge"/);
   assert.match(project.body, /class="ledger/);
+});
+
+test("memory and source pages use the record template", async () => {
+  const app = openApp(env.ctx);
+  await loadExample(app);
+  const olivia = await as(app, env.db, "Olivia Owner");
+  const projectId = await idOf(env.db, "projects", "payments");
+  const memories = await listMemories(env.ctx, await personId(env.db, "Olivia Owner"), { scope: { level: "project", id: projectId }, limit: 5 });
+  assert.ok(memories[0], "example project has memories");
+  const memory = await olivia.get(`/memories/${memories[0].id}`);
+  assert.match(memory.body, /class="record-head"/);
+  assert.match(memory.body, /\/memories\/.*\/history/);
+  const sources = await listSources(env.ctx, await personId(env.db, "Olivia Owner"), { scope: { level: "project", id: projectId }, limit: 5 });
+  assert.ok(sources[0], "example project has sources");
+  const source = await olivia.get(`/sources/${sources[0].id}`);
+  assert.match(source.body, /class="record-head"/);
 });
 
 test("review queue is a two-pane ledger", async () => {

@@ -25,6 +25,7 @@ import {
   ledgerRow,
   options,
   preview,
+  recordHead,
   table,
   type SafeHtml,
 } from "../html.ts";
@@ -401,9 +402,13 @@ async function sourcePage(rc: RequestContext): Promise<WebResponse> {
   return page(rc, {
     title: `Source ${source.reference}`,
     crumbs: projectCrumbs(view),
-    body: html`<p>
-        ${externalLink(source.url, source.url)} ${flagBadges(source.flags)}
-      </p>
+    body: html`${recordHead({
+        kind: "Source",
+        title: source.reference,
+        status: flagBadges(source.flags),
+        meta: html`Repository ${source.externalRepositoryId} · Captured ${source.captureMethod === "github_app" ? "by the GitHub App" : `by ${nameOf(names, source.capturedBy)}`} on ${source.capturedAt}`,
+        actions: externalLink(source.url, source.url),
+      })}
       <p class="hint">A source is raw evidence, not knowledge.</p>
       <section>
         <h2>Excerpt</h2>
