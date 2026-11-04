@@ -57,6 +57,15 @@ document.addEventListener('click', event => {
   if (link && screens[link.dataset.showScreen]) document.querySelector(`[data-screen="${link.dataset.showScreen}"]`)?.click();
 });
 
+document.querySelectorAll('[data-tabs]').forEach(group => {
+  const buttons = group.querySelectorAll('[data-tab-btn]');
+  const panels = group.querySelectorAll('[data-tab-panel]');
+  buttons.forEach(button => button.addEventListener('click', () => {
+    buttons.forEach(other => other.setAttribute('aria-selected', String(other === button)));
+    panels.forEach(panel => { panel.hidden = panel.dataset.tabPanel !== button.dataset.tabBtn; });
+  }));
+});
+
 const menuToggle = document.querySelector('.nav-toggle');
 const mainNavigation = document.querySelector('#main-navigation');
 if (menuToggle && mainNavigation) {

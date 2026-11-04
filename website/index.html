@@ -3,12 +3,12 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="description" content="MemoryNet helps stop AI coding agents from building on decisions your team already reversed. Reviewed evidence, scoped context, and stale-work detection.">
+  <meta name="description" content="MemoryNet is governed decision memory for AI coding agents: human-approved, scoped, cited context — and stale-work detection when decisions change.">
   <meta name="theme-color" content="#081120">
-  <meta property="og:title" content="MemoryNet: keep agents current when decisions change.">
-  <meta property="og:description" content="Approve the decision. Give agents current context. Find the work affected when guidance changes.">
+  <meta property="og:title" content="MemoryNet — governed decision memory for coding agents">
+  <meta property="og:description" content="Approve the decision. Give agents current context. Catch the work pinned to old guidance.">
   <meta property="og:type" content="website">
-  <title>MemoryNet: keep agents current when decisions change</title>
+  <title>MemoryNet — governed decision memory for coding agents</title>
   <link rel="icon" href="./assets/icon.svg" type="image/svg+xml">
   <link rel="preload" href="./assets/familjen-grotesk-latin-variable.woff2" as="font" type="font/woff2" crossorigin>
   <link rel="preload" href="./assets/ibm-plex-sans-latin-variable.woff2" as="font" type="font/woff2" crossorigin>
@@ -20,24 +20,93 @@
   <header class="site-header container">
     <a class="wordmark" href="./" aria-label="MemoryNet home"><img src="./assets/mark.svg" alt="" width="36" height="36">MemoryNet</a>
     <button class="nav-toggle" type="button" aria-controls="main-navigation" aria-expanded="false" hidden>Menu</button>
-    <nav id="main-navigation" aria-label="Main navigation"><a href="#network-demo">Explore</a><a href="./demo.html">Demo</a><a href="#workflow">How it works</a><a href="./guide.html">Documentation</a></nav>
+    <nav id="main-navigation" aria-label="Main navigation"><a href="#features">Features</a><a href="#workflow">How it works</a><a href="#developers">Developers</a><a href="#compare">Compare</a><a href="./demo.html">Demo</a><a href="./guide.html">Docs</a></nav>
     <a class="source-link" href="https://github.com/virajsabhaya23/MemoryNet"><svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path d="M9 19c-4 1-4-2-6-2m12 5v-4c0-1 .1-2-.5-2.5C19 15 20 13 20 10a7 7 0 0 0-2-5 6 6 0 0 0-.1-4S16 1 12 3c-4-2-5.9-2-5.9-2A6 6 0 0 0 6 5a7 7 0 0 0-2 5c0 3 1 5 5.5 5.5C9 16 9 17 9 18v4" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>View source</a>
   </header>
   <main id="main">
     <section class="hero container" aria-labelledby="hero-title">
-      <div class="intro-copy"><div><p class="hero-badge"><span class="hero-badge-dot" aria-hidden="true"></span>Open source · Apache 2.0 · Local-first</p><h1 id="hero-title">Decisions change.<br>Keep agents <span class="grad-text">current.</span></h1></div><div class="intro-detail"><p class="lead">MemoryNet helps stop AI coding agents from building on decisions your team already reversed. Give them approved context and catch the work pinned to old guidance.</p><div class="actions"><a class="button" href="./demo.html">See the 3-minute demo</a><a class="text-link" href="#start">Run locally</a></div><ul class="hero-proof"><li>Exact-version human approval</li><li>Cited MCP context</li><li>Stale-work detection</li></ul></div></div>
-      <div class="atlas-stage">
-      <figure class="product-screen live-network" id="network-demo" data-slot="network-demo" data-kind="product"><img src="./assets/product-network.png" alt="Actual MemoryNet prototype showing 1,118 original Vercel pull request sources across 12 repositories." width="1440" height="1000" fetchpriority="high"></figure>
-      <div class="network-caption"><p>Screenshot of the configured Vercel prototype. A fresh trial starts with its own data.</p><div><a href="./guide.html#graph">Network guide</a><a href="#maintenance">Inspect the source</a></div></div>
+      <div class="intro-copy"><div><p class="hero-badge"><span class="hero-badge-dot" aria-hidden="true"></span>Governed decision memory · Open source</p><h1 id="hero-title">Decisions change.<br>Keep agents <span class="grad-text">current.</span></h1></div><div class="intro-detail"><p class="lead">Other memory tools remember what was said. MemoryNet remembers what was <strong>decided</strong> — approved by a human, scoped to the repo and branch, cited to evidence, and flagged everywhere when it changes.</p><div class="actions"><a class="button" href="./demo.html">See the 3-minute demo</a><a class="text-link" href="#start">Run locally — free</a></div><ul class="hero-proof"><li>Agents can never approve</li><li>Every delivery receipted</li><li>No account or model key</li></ul></div></div>
+      <div class="hero-panel" data-tabs>
+        <div class="hero-panel-bar" role="tablist" aria-label="Product views">
+          <button type="button" role="tab" aria-selected="true" data-tab-btn="graph">Decision graph</button>
+          <button type="button" role="tab" aria-selected="false" data-tab-btn="mcp">MCP context</button>
+          <button type="button" role="tab" aria-selected="false" data-tab-btn="receipt">Audit receipt</button>
+          <span class="hero-panel-live"><span class="hero-badge-dot" aria-hidden="true"></span>Local prototype</span>
+        </div>
+        <div class="hero-panel-body" data-tab-panel="graph" role="tabpanel">
+          <svg class="hero-graph" viewBox="0 0 640 360" role="img" aria-label="Decision graph: an approved retry decision cited to a pull request, governing a task, superseded by a newer decision">
+            <defs><marker id="arr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="#7fb0f0"/></marker></defs>
+            <g class="hg-edges" stroke="#5b84c4" stroke-width="1.6" fill="none">
+              <path d="M150 84 C 240 60, 300 60, 392 78" marker-end="url(#arr)"/><path d="M452 118 C 460 170, 452 210, 420 252" marker-end="url(#arr)"/>
+              <path d="M330 282 C 250 268, 190 240, 158 196" marker-end="url(#arr)"/><path d="M150 150 C 150 190, 150 210, 150 236" marker-end="url(#arr)"/>
+            </g>
+            <g font-family="IBM Plex Sans, sans-serif">
+              <g><rect x="36" y="48" width="228" height="74" rx="10" class="hg-node"/><text x="56" y="76" class="hg-kicker">EVIDENCE · PR #101008</text><text x="56" y="100" class="hg-title">Original pull request</text></g>
+              <g><rect x="392" y="42" width="228" height="76" rx="10" class="hg-node hg-node-accent"/><text x="412" y="70" class="hg-kicker">APPROVED · REV 2</text><text x="412" y="94" class="hg-title">Retry at most twice</text></g>
+              <g><rect x="330" y="252" width="252" height="76" rx="10" class="hg-node"/><text x="350" y="280" class="hg-kicker">TASK · PINNED TO REV 1</text><text x="350" y="304" class="hg-title hg-warn">Stale — revalidate</text></g>
+              <g><rect x="36" y="236" width="228" height="74" rx="10" class="hg-node"/><text x="56" y="264" class="hg-kicker">CODING AGENT · MCP</text><text x="56" y="288" class="hg-title">Receives rev 2 + citations</text></g>
+            </g>
+            <g class="hg-labels" font-family="JetBrains Mono, monospace"><text x="292" y="58">cites</text><text x="478" y="196">supersedes</text><text x="196" y="262">governs</text><text x="94" y="196">delivers</text></g>
+          </svg>
+          <p class="hero-panel-caption">The moment a decision changes, work pinned to the old version is flagged — and stale exports are refused.</p>
+        </div>
+        <div class="hero-panel-body" data-tab-panel="mcp" role="tabpanel" hidden>
+          <pre class="hero-code"><code><span class="hc-k">→ get_task_context</span> {
+  "task": "Update the retry policy",
+  "paths": ["src/api/retry.ts"],
+  "maxTokens": 2000
+}
+<span class="hc-k">← 200</span> items[0] {
+  "title": "Retry at most twice",
+  "revision": 2, "score": 0.94,
+  "reasons": [{ "kind": "governs_path",
+    "pattern": "src/api/**" }],
+  "citations": [{ "reference": "pull/101008" }]
+} <span class="hc-c">// receipt recorded</span></code></pre>
+          <p class="hero-panel-caption">Task-aware, permission-filtered, packed to a token budget — with the reason every item was included.</p>
+        </div>
+        <div class="hero-panel-body" data-tab-panel="receipt" role="tabpanel" hidden>
+          <pre class="hero-code"><code>receipt  8f2c…a41b
+memory   3b363a47…  rev 2
+approved by 2 reviewers · exact version
+scope    repo 1001 · branch main
+chain    sha256(prev : seq : payload) ✓
+<span class="hc-c">// verify anytime: npm run ledger:verify</span></code></pre>
+          <p class="hero-panel-caption">Every approval and delivery is chained into a tamper-evident ledger you can verify offline.</p>
+        </div>
+      </div>
+      <dl class="hero-stats">
+        <div><dt>450+</dt><dd>automated tests</dd></div>
+        <div><dt>4</dt><dd>MCP tools — none can approve</dd></div>
+        <div><dt>1–3</dt><dd>human approvals per decision</dd></div>
+        <div><dt>100%</dt><dd>deliveries receipted &amp; chained</dd></div>
+        <div><dt>$0</dt><dd>local-first, Apache 2.0</dd></div>
+      </dl>
+    </section>
+
+    <div class="requirements-bar" aria-label="Works with"><div class="container requirement-items"><p><strong>Claude Code</strong><span>MCP + bindings</span></p><p><strong>VS Code · Cursor · Codex</strong><span>one-command connect</span></p><p><strong>Your machine</strong><span>embedded DB, no cloud</span></p></div></div>
+
+    <section class="problem-section container" id="problem" aria-labelledby="problem-title">
+      <div class="section-intro"><h2 id="problem-title">Agents don't fail loudly.<br>They build on yesterday's decision.</h2><p>A reversed retry policy, a deprecated API, a dropped constraint — the code still compiles. The mistake ships.</p></div>
+      <div class="pain-grid">
+        <article><h3>Instructions go stale silently</h3><p><code>AGENTS.md</code> says one thing, last month's PR decided another. Nothing flags the file, the task, or the agent still following it.</p></article>
+        <article><h3>Chat memory has no authority</h3><p>Automatic memory recalls what was <em>said</em> — including the proposal that was rejected. No approval, no scope, no citation to check.</p></article>
+        <article><h3>Code graphs have no governance</h3><p>A graph knows what calls what. It doesn't know which decision a human approved, for which branch, or that it was replaced on Tuesday.</p></article>
       </div>
     </section>
-    <div class="requirements-bar" aria-label="Project details"><div class="container requirement-items"><p><strong>Open source</strong><span>Apache 2.0</span></p><p><strong>Local first</strong><span>Your machine, your records</span></p><p><strong>No model key required</strong><span>Node.js 24+</span></p></div></div>
+
     <section class="workflow-section container" id="workflow" aria-labelledby="workflow-title">
-      <div class="section-intro"><h2 id="workflow-title">A decision changes.<br>Work needs a review.</h2><p>Capture evidence, approve exact guidance, and pin active work to that version. Revalidation flags changed decisions and refuses stale context exports. Code behavior still needs repository tests.</p></div>
+      <div class="section-intro"><h2 id="workflow-title">Capture. Approve. Deliver.<br>Revalidate on change.</h2><p>The lifecycle every MemoryNet decision follows — enforced by the database, not by convention.</p></div>
+      <ol class="steps">
+        <li><span class="step-num">01</span><h3>Capture evidence</h3><p>Merged PRs, specs, or an agent's proposal land as cited, pending candidates. Upstream merge is never local approval.</p></li>
+        <li><span class="step-num">02</span><h3>Approve the exact version</h3><p>A different human — never the author, never an agent — approves the precise text, paths, repo, branch, and validity window. 1–3 reviewers per project policy.</p></li>
+        <li><span class="step-num">03</span><h3>Deliver scoped context</h3><p>Agents call <code>get_task_context</code> for their task and files. Only approved, current, in-scope guidance returns — with reasons, citations, and a receipt.</p></li>
+        <li><span class="step-num">04</span><h3>Flag what changed</h3><p>Approve a replacement and every pinned task is marked stale. Stale context cannot be exported until a human revalidates it.</p></li>
+      </ol>
       <div class="product-tour">
         <div class="tour-navigation">
           <div class="screen-tabs" role="group" aria-label="Product screenshots">
-            <div class="screen-choice"><button type="button" data-screen="network" aria-pressed="false" aria-controls="product-screen">Explore Vercel sources</button><p>View captured repository and pull request evidence.</p><a href="./guide.html#graph">Learn network navigation</a></div>
+            <div class="screen-choice"><button type="button" data-screen="network" aria-pressed="false" aria-controls="product-screen">Explore sources</button><p>View captured repository and pull request evidence.</p><a href="./guide.html#graph">Learn network navigation</a></div>
             <div class="screen-choice is-active"><button type="button" data-screen="work" aria-pressed="true" aria-controls="product-screen">Review the evidence</button><p>Inspect imported candidates before approving them as guidance.</p><a href="./guide.html#first-decision">Try the review workflow</a></div>
             <div class="screen-choice"><button type="button" data-screen="decision" aria-pressed="false" aria-controls="product-screen">Read original source</button><p>View original files in a separately configured source checkout.</p><a href="./guide.html#your-repository">Try your repository</a></div>
           </div>
@@ -49,6 +118,19 @@
         </div>
       </div>
     </section>
+
+    <section class="features-section" id="features" aria-labelledby="features-title"><div class="container">
+      <div class="section-intro"><h2 id="features-title">Built like a product.<br>Governed like a ledger.</h2><p>Everything a coding agent needs to stay current — and nothing it can use to approve its own guidance.</p></div>
+      <div class="bento">
+        <article class="bento-card bento-wide"><p class="bento-tag">MCP · Task context</p><h3>Context that explains itself</h3><p>Bounded graph expansion over reviewed links (<code>depends_on</code>, <code>refines</code>, <code>conflicts_with</code>) with a machine-readable reason for every item — governs-this-path, matched-task, linked, shared-evidence.</p></article>
+        <article class="bento-card"><p class="bento-tag">Review</p><h3>Exact-version approval</h3><p>Text, applicability, paths, and links are approved as one version. Editing means a new version and new approvals.</p></article>
+        <article class="bento-card"><p class="bento-tag">Scope</p><h3>Repo · branch · path · time</h3><p>Guidance applies only where a reviewer said it applies. Legacy unscoped records never leak into scoped delivery.</p></article>
+        <article class="bento-card"><p class="bento-tag">Radar</p><h3>Stale-work detection</h3><p>Tasks pin decision versions and spec hashes. Changes flag them; stale exports are refused, not warned about.</p></article>
+        <article class="bento-card"><p class="bento-tag">Audit</p><h3>Tamper-evident ledger</h3><p>Approvals and receipts chained with SHA-256, verifiable offline, with external checkpoints against full rewrites.</p></article>
+        <article class="bento-card bento-wide"><p class="bento-tag">Extraction · Guard</p><h3>AI drafts, humans decide</h3><p>Optional model extraction proposes candidates with exact source quotes and content flags (secret, personal-data, instruction-like). Publication is always a pending proposal awaiting human review.</p></article>
+      </div>
+    </div></section>
+
     <section class="context-section" aria-labelledby="context-title"><div class="container">
       <div class="section-intro"><h2 id="context-title">Inspect the source.<br>Then decide.</h2><a class="text-link" href="./guide.html#first-decision">Try it yourself</a></div>
       <div class="decision-lineage" aria-label="Real Vercel pull request evidence and local review">
@@ -59,7 +141,13 @@
         <article><h3>Your review</h3><p class="version-label">Candidate remains pending</p><p>Imported text becomes guidance only after explicit review of the exact revision.</p><a href="#maintenance" class="lineage-state" data-show-screen="work">Inspect the review queue</a></article>
       </div>
       <p class="caption">Original public source. Upstream merge does not imply local approval.</p>
-      <div class="agent-context"><div><h3>The same context for coding agents.</h3><p>MCP delivers reviewed guidance for the task and files being changed. Agents can propose decisions and report stale guidance; people approve every published version.</p><a class="text-link" href="./guide.html#mcp">Connect a coding agent</a></div><details class="mcp-example"><summary>Inspect the MCP call</summary><pre><code>{
+    </div></section>
+
+    <section class="developers-section container" id="developers" aria-labelledby="developers-title">
+      <div class="section-intro"><h2 id="developers-title">Four tools. Zero approval power.</h2><p>One command configures your coding client. The binding scopes every call to one project, repository, and branch — and expires.</p></div>
+      <div class="agent-context"><div><h3>The same context for coding agents.</h3><p>MCP delivers reviewed guidance for the task and files being changed. Agents can propose decisions and report stale guidance; people approve every published version.</p><a class="text-link" href="./guide.html#mcp">Connect a coding agent</a><div class="command-block dev-install"><div class="command-heading"><span>Install &amp; connect</span><button class="copy-button" type="button" data-copy="install-commands">Copy commands</button><span role="status" aria-live="polite"></span></div><pre><code id="install-commands">npm ci --ignore-scripts
+npm run setup -- --repo OWNER/REPO --reviewer "A teammate" --client claude
+npm start</code></pre></div></div><details class="mcp-example" open><summary>Inspect the MCP call</summary><pre><code>{
   "name": "get_task_context",
   "arguments": {
     "task": "Update the retry policy",
@@ -67,21 +155,42 @@
     "maxTokens": 2000
   }
 }</code></pre><p class="code-note">Context includes reasons, citations, and version receipts. Agents cannot approve.</p></details></div>
+    </section>
+
+    <section class="compare-section" id="compare" aria-labelledby="compare-title"><div class="container">
+      <div class="section-intro"><h2 id="compare-title">Different tools remember<br>different things.</h2><p>Automatic recall tools are excellent at what they do. MemoryNet is built for the moment a decision must be <em>trusted</em>.</p></div>
+      <div class="compare-wrap"><table class="compare-table">
+        <thead><tr><th scope="col">Capability</th><th scope="col" class="is-us">MemoryNet</th><th scope="col">Mem0</th><th scope="col">claude-mem</th><th scope="col">Graphify</th><th scope="col">AGENTS.md</th></tr></thead>
+        <tbody>
+          <tr><th scope="row">Human approval of exact version</th><td class="is-us">● Enforced (DB)</td><td>—</td><td>—</td><td>—</td><td>◐ Git review only</td></tr>
+          <tr><th scope="row">Repo / branch / path / time scope</th><td class="is-us">● All four</td><td>◐ User/session</td><td>—</td><td>—</td><td>—</td></tr>
+          <tr><th scope="row">Citations to source evidence</th><td class="is-us">● Every item</td><td>◐</td><td>◐</td><td>● Code refs</td><td>—</td></tr>
+          <tr><th scope="row">Stale-decision blast radius</th><td class="is-us">● Flags + blocks export</td><td>—</td><td>—</td><td>◐ Graph impact</td><td>—</td></tr>
+          <tr><th scope="row">Tamper-evident audit trail</th><td class="is-us">● SHA-256 ledger</td><td>◐</td><td>—</td><td>—</td><td>◐ Git history</td></tr>
+          <tr><th scope="row">Automatic capture</th><td>◐ Proposals + extraction</td><td class="is-us">●</td><td class="is-us">● Hooks</td><td class="is-us">● AST build</td><td>— Manual</td></tr>
+          <tr><th scope="row">Semantic / graph retrieval</th><td>◐ Lexical + reviewed graph</td><td class="is-us">● Vector + graph</td><td class="is-us">● Vector</td><td class="is-us">● Code graph</td><td>— File read</td></tr>
+          <tr><th scope="row">Coding-agent delivery</th><td class="is-us">● Scoped MCP + receipts</td><td>◐ SDK</td><td class="is-us">● Auto-inject</td><td>◐ MCP queries</td><td class="is-us">● Native</td></tr>
+        </tbody>
+      </table></div>
+      <p class="caption">Based on public documentation, November 2026. ● full · ◐ partial · — not a focus. Rivals lead on automatic recall; MemoryNet leads where a wrong memory is worse than none.</p>
     </div></section>
+
+    <section class="workflow-section container" id="evaluation" aria-labelledby="evaluation-title">
+      <div class="section-intro"><h2 id="evaluation-title">Show the evidence.<br>Keep the claims honest.</h2><p>The lifecycle demo verifies stale-context blocking. Earlier coding observations do not establish a benefit over maintained instructions — and the site says so.</p></div>
+      <dl class="capability-list"><div><dt>Synthetic retry task</dt><dd>MemoryNet, structured decisions, and current dated sources passed. A deliberately outdated instructions-only control failed. One observation per arm.</dd></div><div><dt>Controlled ESLint task</dt><dd>Both ordinary sources and MemoryNet passed seven checks. Resource equivalence was not established.</dd></div><div><dt>Next measurement</dt><dd>A preregistered comparison of in-flight decision changes with equal sources, model budgets, and human maintenance accounting remains to be run.</dd></div></dl>
+      <p class="caption">Historical observations reviewed November 3, 2026; no percentage improvement or production effectiveness is claimed. <a href="./evaluation.json">Read the observation summary</a> · <a href="./demo.html">Inspect the executed lifecycle replay</a>.</p>
+    </section>
+
     <section class="readiness-section container" id="readiness" aria-labelledby="readiness-title">
       <div class="readiness-layout"><div><h2 id="readiness-title">Built locally.<br>Verified locally.</h2><p class="lead">A local pilot for public<br>and synthetic evidence.</p><a class="text-link" href="./guide.html#work-repositories">Personal and work trials</a></div>
         <div class="readiness-details"><dl class="capability-list"><div><dt>AI Decision Extraction</dt><dd>Meta suggests decisions and possible conflicts; exact source quotes and human review establish authority.</dd></div><div><dt>Agent Audit Trail</dt><dd>Task-aware MCP with citations, exact versions, and a receipt for every delivery.</dd></div><div><dt>Stale-Work Radar</dt><dd>Find tasks pinned to changed decisions and block stale context exports.</dd></div><div><dt>Recovery</dt><dd>Verified backups, pre-upgrade snapshots, and audit integrity.</dd></div></dl>
         <details class="readiness-note"><summary>Evidence and production boundaries</summary><p>A configured local workspace opens as one operator; a clean checkout provides test personas. Existing GitHub or access-key login gates stay enabled, and GitHub sign-in can verify linked accounts. The app remains a local prototype for public or synthetic evidence.</p><p>Imported PRs are evidence. Scoped guidance requires explicit applicability and exact-revision approval. Pending and legacy unscoped records are excluded from scoped agent context.</p><p>Real-team benefit remains unproven. Automatic notifications, persistent task-bound delivery, and verified CI integration remain outside the current workflow.</p><a class="text-link" href="./guide.html#limits">Read the remaining work</a></details></div>
       </div>
     </section>
-    <section class="workflow-section container" id="evaluation" aria-labelledby="evaluation-title">
-      <div class="section-intro"><h2 id="evaluation-title">Show the evidence.<br>Keep the claims honest.</h2><p>The lifecycle demo verifies stale-context blocking. Earlier coding observations do not establish a benefit over maintained instructions.</p></div>
-      <dl class="capability-list"><div><dt>Synthetic retry task</dt><dd>MemoryNet, structured decisions, and current dated sources passed. A deliberately outdated instructions-only control failed. One observation per arm.</dd></div><div><dt>Controlled ESLint task</dt><dd>Both ordinary sources and MemoryNet passed seven checks. Resource equivalence was not established.</dd></div><div><dt>Next measurement</dt><dd>A preregistered comparison of in-flight decision changes with equal sources, model budgets, and human maintenance accounting remains to be run.</dd></div></dl>
-      <p class="caption">Historical observations reviewed November 3, 2026; no percentage improvement or production effectiveness is claimed. <a href="./evaluation.json">Read the observation summary</a> · <a href="./demo.html">Inspect the executed lifecycle replay</a>.</p>
-    </section>
-    <section class="start-section" id="start" aria-labelledby="start-title"><div class="container start-grid"><div><h2 id="start-title">Start with<br>one decision.</h2><p>From a source checkout, run the decision-change walkthrough, then connect your public repository and coding agent.</p><a class="text-link" href="./guide.html#install">Read the setup guide</a></div><div class="command-block"><div class="command-heading"><span>Run the walkthrough</span><button class="copy-button" type="button" data-copy="install-commands">Copy commands</button><span role="status" aria-live="polite"></span></div><pre><code id="install-commands">npm ci --ignore-scripts
+
+    <section class="start-section" id="start" aria-labelledby="start-title"><div class="container start-grid"><div><h2 id="start-title">Start with<br>one decision.</h2><p>From a source checkout, run the decision-change walkthrough, then connect your public repository and coding agent.</p><a class="text-link" href="./guide.html#install">Read the setup guide</a></div><div class="command-block"><div class="command-heading"><span>Run the walkthrough</span><button class="copy-button" type="button" data-copy="demo-commands">Copy commands</button><span role="status" aria-live="polite"></span></div><pre><code id="demo-commands">npm ci --ignore-scripts
 npm run demo</code></pre><p class="code-note">Open .local/decision-demo/index.html. Scripted extraction and fixture approvals; real MCP and stale-export checks. No key or account required.</p></div></div></section>
   </main>
-  <footer class="site-footer container"><a class="wordmark" href="./"><img src="./assets/mark.svg" alt="" width="32" height="32">MemoryNet</a><p>Local first. Human reviewed.</p><div><a href="#readiness">What’s ready</a><a href="./guide.html">Documentation</a><a href="https://github.com/virajsabhaya23/MemoryNet">Source repository</a></div></footer>
+  <footer class="site-footer container"><a class="wordmark" href="./"><img src="./assets/mark.svg" alt="" width="32" height="32">MemoryNet</a><p>Local first. Human reviewed.</p><div><a href="#readiness">What's ready</a><a href="./guide.html">Documentation</a><a href="https://github.com/virajsabhaya23/MemoryNet">Source repository</a></div></footer>
 </body>
 </html>
