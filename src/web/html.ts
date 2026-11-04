@@ -103,3 +103,61 @@ export function options(
     ),
   );
 }
+
+/** Label/value pairs as a hairline-divided strip (Cobalt stat strip). */
+export function statStrip(
+  items: ReadonlyArray<readonly [label: string, value: string | number]>,
+): SafeHtml {
+  return html`<dl class="stat-strip">
+    ${items.map(
+      ([label, value]) => html`<div><dt>${label}</dt><dd>${value}</dd></div>`,
+    )}
+  </dl>`;
+}
+
+/** One ledger row: title, meta line, trailing state/actions; whole-row link when href is given. */
+export function ledgerRow(input: {
+  href?: string;
+  title: SafeHtml | string;
+  meta?: SafeHtml | string;
+  trailing?: SafeHtml | string;
+}): SafeHtml {
+  const title = input.href
+    ? html`<a class="row-title" href="${input.href}">${input.title}</a>`
+    : html`<span class="row-title">${input.title}</span>`;
+  return html`<li class="ledger-row">
+    ${title}
+    ${input.meta !== undefined ? html`<span class="row-meta">${input.meta}</span>` : ""}
+    ${input.trailing !== undefined ? html`<span class="row-trailing">${input.trailing}</span>` : ""}
+  </li>`;
+}
+
+/** The record page header: kind badge, title, status, meta line, actions. */
+export function recordHead(input: {
+  kind: SafeHtml | string;
+  title: string;
+  status?: SafeHtml | string;
+  meta?: SafeHtml | string;
+  actions?: SafeHtml | string;
+}): SafeHtml {
+  return html`<header class="record-head">
+    <div>
+      <span class="record-kind">${input.kind}</span>
+      <h1 class="record-title">${input.title}</h1>
+      ${input.status !== undefined ? html`<span class="record-status">${input.status}</span>` : ""}
+    </div>
+    ${input.actions !== undefined ? html`<div class="record-actions">${input.actions}</div>` : ""}
+    ${input.meta !== undefined ? html`<p class="record-meta">${input.meta}</p>` : ""}
+  </header>`;
+}
+
+/** Tab-like scope navigation over existing URLs and in-page anchors. */
+export function scopeTabs(
+  tabs: ReadonlyArray<{ label: string; href: string; count?: number; current?: boolean }>,
+): SafeHtml {
+  return html`<nav class="scope-tabs" aria-label="Scope sections">
+    ${tabs.map(
+      (tab) => html`<a href="${tab.href}" ${tab.current ? html`aria-current="page"` : ""}>${tab.label}${tab.count !== undefined ? html`<span class="tab-count">${tab.count}</span>` : ""}</a>`,
+    )}
+  </nav>`;
+}
