@@ -288,7 +288,7 @@ body .myn-controls button { display: flex; align-items: center; justify-content:
 .repository-code { max-height: 65svh; overflow: auto; padding: 1.5rem; font-size: .8125rem; line-height: 1.6; }
 .section-heading { display: flex; align-items: center; justify-content: space-between; gap: 1rem; }
 
-/* ————— Premium Cobalt layer (hackathon) —————
+/* ————— Premium Cobalt layer —————
    Gradient primary actions with glow, glass rail, elevated ledger rows.
    Restrained: depth stays on controls and the network canvas. */
 ::selection { background: light-dark(#0861cf2e, #8dbbff38); }

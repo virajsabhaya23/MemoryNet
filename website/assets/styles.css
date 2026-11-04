@@ -234,7 +234,7 @@ details:not([open]) > :not(summary) { display: none; }
 .live-network { width: 100%; aspect-ratio: 1440 / 1000; }
 .product-screen { aspect-ratio: 1440 / 1000; }
 
-/* ————— Premium Cobalt layer (hackathon) —————
+/* ————— Premium Cobalt layer —————
    Deep-cobalt top zone (header + hero), glass product frame, gradient
    accents, and scroll reveal. Content and claims unchanged. */
 :root { --cobalt-deep: oklch(16% 0.045 262); --cobalt-deep-2: oklch(22% 0.07 260); --cobalt-glow: oklch(62% 0.17 256); }

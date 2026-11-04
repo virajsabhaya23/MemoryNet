@@ -1,4 +1,4 @@
-# Hackathon — MemoryNet demo script (3 minutes, free tier, offline-capable)
+# MemoryNet — 3-minute demo script (free, offline-capable)
 
 Everything below runs locally with no paid services, no API key, and no
 account. If the live app cannot run in the venue, open the static replay at
@@ -30,7 +30,7 @@ npm run site:serve  # optional: this website locally
 | 2:20 | Open Affected Work | "Every task pinned to v1 is flagged stale, and stale context export is refused until revalidated. That's the moment every other memory tool misses." |
 | 2:45 | Show ledger / receipts | "Every approval and delivery is SHA-256 chained and verifiable offline: `npm run ledger:verify`." |
 
-## Why it wins (judging map)
+## Why it matters (evaluation map)
 
 - **Innovation:** governed decision memory — exact-version human approval,
   repo+branch+path+time scoping, stale-work radar. No major rival
