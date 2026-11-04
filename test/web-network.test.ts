@@ -47,6 +47,8 @@ test("the network page embeds exactly the viewer's network and draws it with sam
   const script = await olivia.get("/assets/network.js");
   assert.match(script.body, /cardMeta/);
   assert.match(script.body, /wrapTitle/);
+  assert.match(script.body, /net-timeline ledger/);
+  assert.match(script.body, /net-path-chain ledger/);
   assert.match(
     reply.headers["Content-Security-Policy"] ?? "",
     /script-src 'self'/,

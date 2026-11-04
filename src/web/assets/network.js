@@ -1615,9 +1615,9 @@ function start(data) {
     }
     const parts = [];
     for (const path of trace.paths) {
-      const chain = element("ol", { class: "net-path-chain" });
+      const chain = element("ol", { class: "net-path-chain ledger" });
       path.forEach((id, index) => {
-        const li = element("li");
+        const li = element("li", { class: "ledger-row" });
         li.append(nodeButton(id));
         const next = path[index + 1];
         if (next) {
@@ -2549,7 +2549,7 @@ function start(data) {
         ),
       );
     } else {
-      const ol = element("ol", { class: "net-timeline" });
+      const ol = element("ol", { class: "net-timeline ledger" });
       for (const group of eventsByDay(shown)) {
         const li = element("li");
         li.append(element("time", { datetime: group.day }, group.day));
@@ -2557,7 +2557,7 @@ function start(data) {
         for (const event of group.events) {
           const row = element("li", {
             "data-event": event.id,
-            class: `tier-${tierOf(nodeById.get(event.id)?.kind ?? "memory")}`,
+            class: `ledger-row tier-${tierOf(nodeById.get(event.id)?.kind ?? "memory")}`,
           });
           if (selected?.type === "node" && selected.id === event.id)
             row.classList.add("selected");
