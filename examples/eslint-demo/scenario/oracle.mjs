@@ -32,7 +32,7 @@ try {
   assert.equal(installed.version, "10.0.0", "execute actual ESLint 10.0.0");
   assert(!/ESLINT_USE_FLAT_CONFIG|--no-eslintrc|--no-config-lookup/.test(packageJson.scripts?.lint ?? ""), "remove obsolete switches without disabling lookup");
   for (const script of ["lint", "test"]) {
-    const result = execute("npm", ["run", script]);
+    const result = execute(process.platform === "win32" ? "npm.cmd" : "npm", ["run", script]);
     checks.push({ name: `npm run ${script}`, ...result });
     assert.equal(result.exitCode, 0, `${script} must succeed`);
   }
