@@ -143,7 +143,7 @@ export function recordHead(input: {
   return html`<header class="record-head">
     <div>
       <span class="record-kind">${input.kind}</span>
-      <h1 class="record-title">${input.title}</h1>
+      <p class="record-title">${input.title}</p>
       ${input.status !== undefined ? html`<span class="record-status">${input.status}</span>` : ""}
     </div>
     ${input.actions !== undefined ? html`<div class="record-actions">${input.actions}</div>` : ""}

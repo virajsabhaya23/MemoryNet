@@ -63,6 +63,20 @@ test("jump menu script is served as a same-origin module", async () => {
   assert.match(script.headers["Content-Type"] ?? "", /text\/javascript/);
 });
 
+test("project page is a tabbed workspace with ledger knowledge", async () => {
+  const app = openApp(env.ctx);
+  await loadExample(app);
+  const olivia = await as(app, env.db, "Olivia Owner");
+  const projectId = await idOf(env.db, "projects", "payments");
+  const project = await olivia.get(`/projects/${projectId}`);
+  assert.match(project.body, /class="scope-tabs"/);
+  assert.match(project.body, /class="record-head"/);
+  assert.match(project.body, new RegExp(`href="/projects/${projectId}/work"`));
+  assert.match(project.body, new RegExp(`href="/projects/${projectId}/retrievals"`));
+  assert.match(project.body, /id="current-knowledge"/);
+  assert.match(project.body, /class="ledger/);
+});
+
 test("organization and business-unit pages use the record template", async () => {
   const app = openApp(env.ctx);
   await loadExample(app);

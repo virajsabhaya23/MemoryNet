@@ -31,7 +31,7 @@ import {
   type Role,
 } from "../../roles.ts";
 import { requireId } from "../../validation.ts";
-import { badge, html, ledgerRow, options, recordHead, statStrip, table, type SafeHtml } from "../html.ts";
+import { badge, html, ledgerRow, options, recordHead, scopeTabs, statStrip, table, type SafeHtml } from "../html.ts";
 import {
   formValue,
   interfaceIcon,
@@ -587,7 +587,21 @@ async function projectPage(rc: RequestContext): Promise<WebResponse> {
   return page(rc, {
     title: project.name,
     crumbs: projectCrumbs(view),
-    body: html`<p>Your role in this project: ${roleBadge(project.role)}</p>
+    body: html`${recordHead({
+        kind: "Project",
+        title: project.name,
+        status: roleBadge(project.role),
+        meta: html`Your role in this project is shown beside the title.`,
+        actions: rc.checkouts?.has(project.name) ? html`<a class="key" href="/projects/${project.id}/repository">Browse original repository</a>` : undefined,
+      })}
+      ${scopeTabs([
+        { label: "Knowledge", href: "#current-knowledge", count: memories.length, current: true },
+        { label: "Definitions", href: `/scopes/project/${project.id}/definitions` },
+        { label: "Evidence", href: "#evidence", count: sources.length },
+        { label: "Work", href: `/projects/${project.id}/work` },
+        { label: "Search", href: `/projects/${project.id}/search` },
+        { label: "Activity", href: `/projects/${project.id}/retrievals` },
+      ])}
       <nav class="project-actions" aria-label="Project actions">
         ${rc.checkouts?.has(project.name)?html`<a class="button-link" href="/projects/${project.id}/repository">Browse original repository</a>`:""}
         <a href="/projects/${project.id}/work">Affected work</a>

@@ -22,6 +22,7 @@ import {
   badge,
   externalLink,
   html,
+  ledgerRow,
   options,
   preview,
   table,
@@ -174,18 +175,16 @@ export async function memoriesSection(
   return html`<section${id ? html` id="${id}"` : ""}>
     <h2>${heading}</h2>
     ${hint === undefined ? "" : html`<p class="hint">${hint}</p>`}
-    ${table(
-      ["Title", "Status", "Type", "Owner", "Version", "Approved"],
-      memories.map((memory) => [
-        html`<a href="/memories/${memory.id}">${memory.title}</a>`,
-        memoryStatusBadge(memory.status),
-        badge(typeLabel(memory.type), "type"),
-        html`${nameOf(names, memory.ownerId)}`,
-        html`${memory.revision}`,
-        html`${memory.approvedAt}`,
-      ]),
-      empty,
-    )}
+    ${memories.length === 0
+      ? html`<p class="empty">${empty}</p>`
+      : html`<ul class="ledger">
+          ${memories.map((memory) => ledgerRow({
+            href: `/memories/${memory.id}`,
+            title: memory.title,
+            meta: html`${typeLabel(memory.type)} · ${nameOf(names, memory.ownerId)} · rev ${memory.revision} · approved ${memory.approvedAt}`,
+            trailing: memoryStatusBadge(memory.status),
+          }))}
+        </ul>`}
   </section>`;
 }
 
@@ -208,18 +207,16 @@ export async function proposalsSection(
       Proposals are not knowledge. Only contributors and above can see them, and
       a different reviewer must approve each one.
     </p>
-    ${table(
-      ["Title", "Type", "Status", "Proposed by", "Proposed"],
-      proposals.map((proposal) => [
-        html`<a href="/proposals/${proposal.id}">${proposal.title}</a>
-          ${flagBadges(proposal.flags)}`,
-        badge(typeLabel(proposal.type), "type"),
-        proposalStatusBadge(proposal.status),
-        html`${nameOf(names, proposal.proposedBy)}`,
-        html`${proposal.proposedAt}`,
-      ]),
-      "No proposals here.",
-    )}
+    ${proposals.length === 0
+      ? html`<p class="empty">No proposals here.</p>`
+      : html`<ul class="ledger">
+          ${proposals.map((proposal) => ledgerRow({
+            href: `/proposals/${proposal.id}`,
+            title: html`${proposal.title} ${flagBadges(proposal.flags)}`,
+            meta: html`${typeLabel(proposal.type)} · proposed by ${nameOf(names, proposal.proposedBy)} · ${proposal.proposedAt}`,
+            trailing: proposalStatusBadge(proposal.status),
+          }))}
+        </ul>`}
   </section>`;
 }
 
@@ -227,16 +224,16 @@ export function sourcesSection(sources: readonly Source[]): SafeHtml {
   return html`<section id="evidence">
     <h2>Sources you can read</h2>
     <p class="hint">Sources are raw evidence, not knowledge.</p>
-    ${table(
-      ["Evidence", "Excerpt", "Captured"],
-      sources.map((source) => [
-        html`<a href="/sources/${source.id}">${source.reference}</a>
-          ${flagBadges(source.flags)}`,
-        html`${preview(source.excerpt)}`,
-        html`${source.capturedAt}`,
-      ]),
-      "No sources you can read here.",
-    )}
+    ${sources.length === 0
+      ? html`<p class="empty">No sources you can read here.</p>`
+      : html`<ul class="ledger">
+          ${sources.map((source) => ledgerRow({
+            href: `/sources/${source.id}`,
+            title: html`${source.reference} ${flagBadges(source.flags)}`,
+            meta: preview(source.excerpt),
+            trailing: html`${source.capturedAt}`,
+          }))}
+        </ul>`}
   </section>`;
 }
 
