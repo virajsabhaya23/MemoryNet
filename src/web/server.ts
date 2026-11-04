@@ -23,6 +23,9 @@ const prototypePath = configuredPrototype === "off" ? undefined : configuredProt
 let prototype = prototypePath ? await loadPrototypeConfig(prototypePath, false) : undefined;
 const checkouts = prototype ? await loadCheckoutCatalog(prototype.checkoutManifestFile) : undefined;
 const profile = prototype ? null : await readWorkspaceProfile();
+// A registered local fixture can choose a separate loopback port. The bind address is always fixed.
+const port = profile?.repository.id.startsWith("local-") ? Number(new URL(profile.appUrl).port) : APP_PORT;
+if (!Number.isInteger(port) || port < 1024 || port > 65535) throw new Error("Invalid local workspace port");
 const dataDir = prototype?.dataDir ?? process.env.MEMORYNET_DATA_DIR ?? profile?.dataDir ?? ".data/memorynet";
 // A data-dir override must never silently pick an operator from a different workspace.
 const operatorId = prototype?.principalId ?? (profile && resolve(profile.dataDir) === resolve(dataDir) ? profile.operatorId : undefined);
@@ -61,7 +64,7 @@ try {
     const row = (await db.query<{kind:string}>("SELECT kind FROM principals WHERE id=$1", [operatorId])).rows[0];
     if (row?.kind !== "human") throw new Error("Local workspace operator must be an existing human principal");
   }
-  app = createApp(ctx, { port: APP_PORT, decisionGuard, checkouts, github,
+  app = createApp(ctx, { port: port, decisionGuard, checkouts, github,
     localPrincipalId: accessMode === "local" ? operatorId : undefined,
     prototype: accessMode === "access-key" ? { ...prototype!, accessKeyHash: prototype!.accessKeyHash! } : undefined,
     agentBinding: bindingPath ? () => readAgentBindingFile(bindingPath) : undefined,
@@ -71,7 +74,7 @@ try {
   throw error;
 }
 
-const { server, close } = createLocalHttpServer(app, APP_PORT);
+const { server, close } = createLocalHttpServer(app, port);
 
 let closing = false;
 async function shutdown(code: number): Promise<void> {
@@ -85,7 +88,7 @@ async function shutdown(code: number): Promise<void> {
 server.on("error", (error: NodeJS.ErrnoException) => {
   console.error(
     error.code === "EADDRINUSE"
-      ? `Port ${APP_PORT} is already in use. Stop the other process and try again.`
+      ? `Port ${port} is already in use. Stop the other process and try again.`
       : error,
   );
   void shutdown(1);
@@ -93,8 +96,8 @@ server.on("error", (error: NodeJS.ErrnoException) => {
 process.on("SIGINT", () => void shutdown(0));
 process.on("SIGTERM", () => void shutdown(0));
 
-server.listen(APP_PORT, HOST, () => {
-  console.log(`MemoryNet ${accessMode === "local" ? "local workspace (no sign-in required)" : accessMode === "github" ? "with GitHub sign-in" : accessMode === "access-key" ? "with local access-key sign-in" : "development sandbox"}: http://localhost:${APP_PORT}`);
+server.listen(port, HOST, () => {
+  console.log(`MemoryNet ${accessMode === "local" ? "local workspace (no sign-in required)" : accessMode === "github" ? "with GitHub sign-in" : accessMode === "access-key" ? "with local access-key sign-in" : "development sandbox"}: http://localhost:${port}`);
   console.log(
     `Database: ${dataDir} (public or synthetic evidence only). Press Ctrl+C to stop.`,
   );

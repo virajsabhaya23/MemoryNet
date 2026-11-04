@@ -53,7 +53,7 @@ test("manual proposal review and approved history display the exact repository, 
   const reviewer = await as(w.people.reviewer.id);
   const screen = await reviewer.get(proposalPath);
   assert.match(screen.body, /Proposed applicability/);
-  assert.match(screen.body, /GitHub repository ID[\s\S]*1001/);
+  assert.match(screen.body, /Repository ID[\s\S]*1001/);
   assert.match(screen.body, /Exact branch[\s\S]*release\/next/);
   assert.match(screen.body, /2026-09-24T09:00:00\.000Z/);
   assert.match(screen.body, /2026-10-01T00:00:00\.000Z/);

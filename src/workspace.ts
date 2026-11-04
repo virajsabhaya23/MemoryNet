@@ -1,3 +1,4 @@
+import { REPOSITORY_ID } from "./repository-identity.ts";
 import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { z } from "zod";
@@ -13,7 +14,7 @@ export const WorkspaceProfileSchema = z.object({
   organizationId: z.uuid(),
   projectId: z.uuid(),
   repository: z.object({
-    id: z.string().regex(/^[1-9][0-9]{0,18}$/),
+    id: z.string().regex(REPOSITORY_ID),
     fullName: z.string().regex(/^[A-Za-z0-9][A-Za-z0-9-]{0,38}\/[A-Za-z0-9_.-]{1,100}$/),
     branch: z.string().min(1).max(255),
   }).strict(),
@@ -25,7 +26,7 @@ export const WorkspaceProfileSchema = z.object({
 }).strict();
 export type WorkspaceProfile = z.infer<typeof WorkspaceProfileSchema>;
 
-export async function readWorkspaceProfile(path = WORKSPACE_PROFILE_PATH): Promise<WorkspaceProfile | null> {
+export async function readWorkspaceProfile(path = process.env.MEMORYNET_WORKSPACE_PROFILE || WORKSPACE_PROFILE_PATH): Promise<WorkspaceProfile | null> {
   let text: string;
   try {
     text = await readFile(path, "utf8");

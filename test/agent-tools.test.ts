@@ -189,7 +189,7 @@ test("a fresh MCP SDK client gets only the tools its binding allows and can prop
     app = createApp(env.ctx, { port: address.port, agentBinding: () => readAgentBindingFile(file) });
     await client.connect(new StdioClientTransport({ command: process.execPath, args: [fileURLToPath(new URL("../src/scripts/mcp.ts", import.meta.url))],
       env: { MEMORYNET_AGENT_BINDING_FILE: file, MEMORYNET_APP_URL: `http://127.0.0.1:${address.port}` }, stderr: "pipe" }));
-    assert.deepEqual((await client.listTools()).tools.map((tool) => tool.name).sort(), ["get_context", "get_task_context", "propose_memory", "report_outdated"]);
+    assert.deepEqual((await client.listTools()).tools.map((tool) => tool.name).sort(), ["get_context", "get_task_context", "propose_memory", "report_outdated", "revalidate_context"]);
     assert.match(client.getInstructions() ?? "", /get_task_context/);
     const context = await client.callTool({ name: "get_task_context", arguments: { task: "queue consumer acknowledgement", paths: ["src/queue/a.ts"] } });
     assert.notEqual(context.isError, true);

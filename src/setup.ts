@@ -1,3 +1,4 @@
+import { REPOSITORY_ID, repositoryProvider } from "./repository-identity.ts";
 import { execFileSync } from "node:child_process";
 import { mkdir, readdir, stat, writeFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
@@ -95,7 +96,7 @@ async function isEmptyOrMissing(directory: string): Promise<boolean> {
 export async function setupWorkspace(options: SetupOptions): Promise<SetupResult> {
   const profilePath = options.profilePath ?? WORKSPACE_PROFILE_PATH;
   if (await readWorkspaceProfile(profilePath)) throw new ValidationError(`A workspace is already set up (${profilePath}). Use it with npm start, or remove that file to start over.`);
-  if (!FULL_NAME.test(options.repository.fullName) || !/^[1-9][0-9]{0,18}$/.test(options.repository.id)) throw new ValidationError("Give the repository as owner/name with its numeric GitHub ID");
+  if (!FULL_NAME.test(options.repository.fullName) || !REPOSITORY_ID.test(options.repository.id)) throw new ValidationError("Give the repository as owner/name with its numeric GitHub ID");
   requireDecisionBranch(options.repository.branch);
   const names = [options.operatorName, ...options.reviewerNames, options.agentName ?? "Coding agent"].map((name) => name.trim());
   if (names.some((name) => name.length < 1 || name.length > 100)) throw new ValidationError("Names must be 1 to 100 characters");
@@ -117,15 +118,15 @@ export async function setupWorkspace(options: SetupOptions): Promise<SetupResult
     const project = await createProject(ctx, operator.id, { businessUnitId: unit.id, slug: slugify(repoName, "project"), name: options.repository.fullName });
     const scope = { level: "project" as const, id: project.id };
     for (const reviewer of reviewers) await assignRole(ctx, operator.id, { principalId: reviewer.id, scope, role: "reviewer", reason: "Local workspace setup" });
-    await assignRole(ctx, operator.id, { principalId: agent.id, scope, role: "contributor", reason: "Coding agent may read and propose" });
-    await connectRepository(ctx, operator.id, { projectId: project.id, provider: "github", externalRepositoryId: options.repository.id, fullName: options.repository.fullName });
+    await assignRole(ctx, operator.id, { principalId: agent.id, scope, role: repositoryProvider(options.repository.id) === "local" ? "reader" : "contributor", reason: "Local coding agent setup" });
+    await connectRepository(ctx, operator.id, { projectId: project.id, provider: repositoryProvider(options.repository.id), externalRepositoryId: options.repository.id, fullName: options.repository.fullName });
     for (const principal of [operator, ...reviewers, agent]) {
-      await recordRepositoryAccess(ctx, { principalId: principal.id, provider: "github", externalRepositoryId: options.repository.id, canRead: true });
+      await recordRepositoryAccess(ctx, { principalId: principal.id, provider: repositoryProvider(options.repository.id), externalRepositoryId: options.repository.id, canRead: true });
     }
     await mkdir(dirname(resolve(options.bindingFile)), { recursive: true, mode: 0o700 });
     await writeAgentBindingFile(options.bindingFile, {
       principalId: agent.id, projectId: project.id, repositoryId: options.repository.id, branch: options.repository.branch,
-      capabilities: ["context", "propose", "report"], ownerId: operator.id, ttlHours: options.bindingTtlHours ?? 24,
+      capabilities: repositoryProvider(options.repository.id) === "local" ? ["context"] : ["context", "propose", "report"], ownerId: operator.id, ttlHours: options.bindingTtlHours ?? 24,
     }, now);
     await db.exec("ANALYZE");
     const profile: WorkspaceProfile = {
@@ -150,12 +151,12 @@ export async function setupWorkspace(options: SetupOptions): Promise<SetupResult
 export async function renewLocalAccess(ctx: MemoryNetContext, profile: WorkspaceProfile): Promise<number> {
   const principals = [profile.operatorId, ...profile.reviewerIds, profile.agentId];
   const { rows } = await ctx.db.query<{ principal_id: string }>(
-    `SELECT principal_id FROM repository_access WHERE provider = 'github' AND external_repository_id = $1
+    `SELECT principal_id FROM repository_access WHERE provider = $3 AND external_repository_id = $1
        AND principal_id = ANY($2::uuid[]) AND can_read`,
-    [profile.repository.id, principals],
+    [profile.repository.id, principals, repositoryProvider(profile.repository.id)],
   );
   for (const row of rows) {
-    await recordRepositoryAccess(ctx, { principalId: row.principal_id, provider: "github", externalRepositoryId: profile.repository.id, canRead: true });
+    await recordRepositoryAccess(ctx, { principalId: row.principal_id, provider: repositoryProvider(profile.repository.id), externalRepositoryId: profile.repository.id, canRead: true });
   }
   return rows.length;
 }

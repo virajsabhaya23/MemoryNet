@@ -145,7 +145,7 @@ export function applicabilityView(value: DecisionApplicability | null | undefine
   const until = value.validUntil ? utc(value.validUntil) : null;
   const outside = now && (now.getTime() < Date.parse(from) || (until !== null && now.getTime() >= Date.parse(until)));
   return html`<section><h2>${proposed ? "Proposed applicability" : "Reviewed applicability"}</h2>
-    <dl class="facts"><dt>GitHub repository ID</dt><dd><code>${value.repositoryId}</code></dd>
+    <dl class="facts"><dt>${value.repositoryId.startsWith("local-") ? "Local repository ID" : "GitHub repository ID"}</dt><dd><code>${value.repositoryId}</code></dd>
       <dt>Exact branch</dt><dd><code>${value.branch}</code></dd>
       <dt>Valid from (inclusive)</dt><dd><code>${from}</code></dd>
       <dt>Valid until (exclusive)</dt><dd>${until ? html`<code>${until}</code>` : "No end date"}</dd></dl>
@@ -248,6 +248,8 @@ export async function recordSourceSection(
     user.id,
     projectId,
   );
+  if (repositories.length && repositories.every(r => r.provider === "local")) return html`<section id="record-evidence"><h2>Record local evidence</h2>
+    <p>Stop the app and run <code>npm run workspace -- import</code> with the selected project, commit and document. Imported evidence appears here for review.</p></section>`;
   if (repositories.length === 0) {
     return html`<section id="record-evidence">
       <h2>Record pull request evidence</h2>
@@ -257,7 +259,7 @@ export async function recordSourceSection(
   return html`<section id="record-evidence">
     <h2>Record pull request evidence</h2>
     <p class="hint">
-      Only pull requests are supported for now. Text that looks like a secret is
+      This form records GitHub pull requests. Text that looks like a secret is
       refused.
     </p>
     ${postForm(
@@ -267,7 +269,7 @@ export async function recordSourceSection(
           >Repository
           <select name="externalRepositoryId" required>
             ${options(
-              repositories.map((repository) => ({
+              repositories.filter(r => r.provider === "github").map((repository) => ({
                 value: repository.externalRepositoryId,
                 label: repository.fullName,
               })),

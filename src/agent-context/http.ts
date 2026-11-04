@@ -3,8 +3,8 @@ import type { MemoryNetContext } from "../context.ts";
 import { MemoryNetError } from "../errors.ts";
 import { SECURITY_HEADERS, type WebRequest, type WebResponse } from "../web/kit.ts";
 import { parseAgentBinding, type AgentBinding } from "./binding.ts";
-import { AGENT_CONTEXT_PATH, AGENT_PROPOSALS_PATH, AGENT_REPORTS_PATH, AGENT_TASK_CONTEXT_PATH } from "./contract.ts";
-import { getAgentContext, getAgentTaskContext, proposeAgentMemory, reportAgentMemory } from "./service.ts";
+import { AGENT_REVALIDATE_PATH, AGENT_CONTEXT_PATH, AGENT_PROPOSALS_PATH, AGENT_REPORTS_PATH, AGENT_TASK_CONTEXT_PATH } from "./contract.ts";
+import { revalidateAgentReceipt, getAgentContext, getAgentTaskContext, proposeAgentMemory, reportAgentMemory } from "./service.ts";
 
 export type AgentBindingLoader = () => Promise<AgentBinding>;
 function response(status: number, value: unknown): WebResponse {
@@ -15,6 +15,7 @@ const CODES = { validation_failed: 400, forbidden: 403, not_found: 404, conflict
 /** Each endpoint: its largest accepted body, its success status and the service call. */
 // The frozen v1 context endpoint keeps its bare error codes; newer endpoints explain refusals.
 const ENDPOINTS: Readonly<Record<string, { maxBytes: number; status: number; explain: boolean; run: (ctx: MemoryNetContext, binding: AgentBinding, input: unknown) => Promise<unknown> }>> = {
+  [AGENT_REVALIDATE_PATH]: { maxBytes: 1024, status: 200, explain: true, run: revalidateAgentReceipt },
   [AGENT_CONTEXT_PATH]: { maxBytes: 8192, status: 200, explain: false, run: getAgentContext },
   [AGENT_TASK_CONTEXT_PATH]: { maxBytes: 16_384, status: 200, explain: true, run: getAgentTaskContext },
   [AGENT_PROPOSALS_PATH]: { maxBytes: 32_768, status: 201, explain: true, run: proposeAgentMemory },

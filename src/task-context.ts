@@ -1,3 +1,4 @@
+import { requireRepositoryId } from "./repository-identity.ts";
 import { requireCaller, requireRole, resolveScope, type Principal } from "./access.ts";
 import { mayContainPersonalData, requireNoSecrets } from "./content-checks.ts";
 import { accessFreshSince, type MemoryNetContext } from "./context.ts";
@@ -15,7 +16,7 @@ import {
 import { parseRelations, pathMatches, pathSpecificity, requirePathPattern, type MemoryRelation, type MemoryRelations } from "./relations.ts";
 import { recordRetrieval, type Citation } from "./retrieval.ts";
 import { MINIMUM_ROLE } from "./roles.ts";
-import { requireGithubId, requireId } from "./validation.ts";
+import { requireId } from "./validation.ts";
 
 /** Bounds on one task-context request and response. Tokens are estimated at four characters each. */
 export const TASK_CONTEXT_LIMITS = {
@@ -218,7 +219,7 @@ export async function getTaskContext(ctx: MemoryNetContext, callerId: string, in
   const depth = whole(input.depth, "depth", 1, 0, TASK_CONTEXT_LIMITS.maxDepth);
   const observedAt = ctx.now();
   const scope = input.applicability
-    ? { repositoryId: requireGithubId(input.applicability.repositoryId, "repositoryId"), branch: requireDecisionBranch(input.applicability.branch), at: observedAt }
+    ? { repositoryId: requireRepositoryId(input.applicability.repositoryId, "repositoryId"), branch: requireDecisionBranch(input.applicability.branch), at: observedAt }
     : null;
   const readCtx = { ...ctx, now: () => new Date(observedAt) };
   let allowed: Principal | null = null;

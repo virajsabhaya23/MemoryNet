@@ -26,5 +26,9 @@ jobs:
           cache: npm
       - run: npm ci --ignore-scripts
       - run: npm run check
+      - run: npm run eval:smoke
+      - run: npm run eval:work
+      - run: npm run site:check
+      - run: npm audit --audit-level=high
       - run: npm --prefix examples/eslint-demo/scenario/start ci --ignore-scripts --no-audit --no-fund
       - run: node examples/eslint-demo/verify.mjs

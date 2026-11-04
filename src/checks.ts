@@ -1,7 +1,7 @@
 import type { MemoryNetContext } from "./context.ts";
 import { ValidationError } from "./errors.ts";
 import type { ProposalStatus } from "./knowledge.ts";
-import { PROVIDERS, type Provider } from "./repositories.ts";
+import type { Provider } from "./repositories.ts";
 import {
   requireGithubId,
   requireOneOf,
@@ -56,7 +56,7 @@ export async function buildCheckSummary(
     reviewBaseUrl: string;
   },
 ): Promise<CheckSummary | null> {
-  const provider = requireOneOf(input.provider, PROVIDERS, "provider");
+  const provider = requireOneOf(input.provider, ["github"] as const, "provider");
   const externalRepositoryId = requireGithubId(
     input.externalRepositoryId,
     "externalRepositoryId",

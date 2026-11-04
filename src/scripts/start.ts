@@ -1,3 +1,4 @@
+import { repositoryProvider } from "../repository-identity.ts";
 // Starts the app for the workspace created by `npm run setup`, renewing its agent binding and local access first.
 import { bindingCapabilities, bindingOwner, readAgentBindingFile, rotateAgentBindingFile, writeAgentBindingFile } from "../agent-context/binding.ts";
 import { createContext } from "../context.ts";
@@ -25,7 +26,7 @@ try {
   }
 } catch (error) {
   if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
-  await writeAgentBindingFile(profile.bindingFile, { ...scope, capabilities: ["context", "propose", "report"], ownerId: profile.operatorId });
+  await writeAgentBindingFile(profile.bindingFile, { ...scope, capabilities: repositoryProvider(profile.repository.id) === "local" ? ["context"] : ["context", "propose", "report"], ownerId: profile.operatorId });
   console.log("Agent binding recreated.");
 }
 const { db } = await openMigratedDatabase(profile.dataDir);

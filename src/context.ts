@@ -1,4 +1,4 @@
-import type { Database } from "./db.ts";
+import type { Database, Queryable } from "./db.ts";
 
 export interface MemoryNetContext {
   readonly db: Database;
@@ -36,4 +36,12 @@ export function createContext(
 export function accessFreshSince(ctx: MemoryNetContext): Date {
   const oldest = ctx.now().getTime() - ctx.repositoryAccessMaxAgeMs;
   return new Date(Math.max(oldest, ctx.repositoryAccessNotBefore?.getTime() ?? oldest));
+}
+
+/** Reuse a live transaction for nested domain calls, with a fixed check time. */
+export function inTransaction(ctx: MemoryNetContext, tx: Queryable): MemoryNetContext {
+  const now = ctx.now();
+  const db: Database = { query: (sql, params) => tx.query(sql, params), exec: (sql) => tx.exec(sql),
+    transaction: (fn) => fn(tx), async close() { throw new Error("Transaction cannot close database"); } };
+  return { ...ctx, db, now: () => new Date(now) };
 }

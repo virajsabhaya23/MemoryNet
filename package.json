@@ -44,7 +44,9 @@
         "contract:export": "node src/scripts/export-evaluation-contracts.ts",
         "work:reconcile": "node src/scripts/reconcile-work.ts",
         "ledger:verify": "node src/scripts/ledger.ts verify",
-        "ledger:checkpoint": "node src/scripts/ledger.ts checkpoint"
+        "ledger:checkpoint": "node src/scripts/ledger.ts checkpoint",
+        "workspace": "node src/scripts/workspace.ts",
+        "demo:workspace": "node examples/local-workspace/demo.ts"
     },
     "dependencies": {
         "@electric-sql/pglite": "^0.5.8",

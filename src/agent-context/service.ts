@@ -1,7 +1,11 @@
-import { requireCaller, type Principal } from "../access.ts";
+import { requireCaller, requireRole, resolveScope, type Principal } from "../access.ts";
 import type { MemoryNetContext } from "../context.ts";
-import type { Database, Queryable } from "../db.ts";
+import type { Queryable } from "../db.ts";
 import { ForbiddenError, NotFoundError, ValidationError } from "../errors.ts";
+import { decisionPinIssues } from "../work.ts";
+import { accessFreshSince, inTransaction } from "../context.ts";
+import { ReceiptQuerySchema, type ReceiptCheck } from "./contract.ts";
+import { findReadableMemory, requireDecisionApplicabilityAccess } from "../knowledge.ts";
 import { reportOutdated } from "../history.ts";
 import { getMemory, proposeChange, proposeMemory, recordSource } from "../knowledge.ts";
 import { requireAgentProposalAllowed } from "../policy.ts";
@@ -22,13 +26,6 @@ import {
   type AgentReportReceipt,
   type AgentTaskContextResponse,
 } from "./contract.ts";
-
-function inTransaction(ctx: MemoryNetContext, tx: Queryable): MemoryNetContext {
-  const now = ctx.now();
-  const db: Database = { query: (sql, params) => tx.query(sql, params), exec: (sql) => tx.exec(sql),
-    transaction: (fn) => fn(tx), async close() { throw new Error("Transaction cannot close database"); } };
-  return { ...ctx, db, now: () => new Date(now) };
-}
 
 /** Every agent request: a valid, unexpired binding that grants this capability. Never reveals the token. */
 function authorize(ctx: MemoryNetContext, rawBinding: AgentBinding, capability: AgentCapability, input: unknown): AgentBinding {
@@ -179,4 +176,52 @@ export async function reportAgentMemory(ctx: MemoryNetContext, rawBinding: Agent
   await scopedMemory(ctx, caller, binding, parsed.data.memoryId);
   const report = await reportOutdated(ctx, caller.id, parsed.data);
   return AgentReportReceiptSchema.parse({ schemaVersion: 1, reportId: report.id, memoryId: report.memoryId, revision: report.revision, status: "open" });
+}
+
+/** Compare only the approved items actually delivered to this principal, project, repository and branch.
+ * Fail closed for the entire receipt if either historical evidence or current authority is unreadable. */
+export async function revalidateAgentReceipt(ctx: MemoryNetContext, rawBinding: AgentBinding, input: unknown): Promise<ReceiptCheck> {
+  const binding = authorize(ctx, rawBinding, "context", input);
+  const parsed = ReceiptQuerySchema.safeParse(input);
+  if (!parsed.success) throw new ValidationError("Invalid retrieval ID");
+  return ctx.db.transaction(async tx => {
+    await tx.exec("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ");
+    const scoped = inTransaction(ctx, tx), caller = await requireAgent(tx, binding);
+    const now = scoped.now();
+    await requireRole(tx, caller, await resolveScope(tx, { level: "project", id: binding.projectId }), "reader", "check a context receipt");
+    const refuse = () => new ForbiddenError("Receipt unavailable in this scope");
+    await requireDecisionApplicabilityAccess(tx, scoped, caller, binding.projectId, {
+      repositoryId: binding.repositoryId, branch: binding.branch, validFrom: now, validUntil: null,
+    });
+    const id = parsed.data.retrievalId;
+    const receipt = (await tx.query<{ outcome: string }>(`SELECT outcome FROM retrievals
+      WHERE id=$1 AND caller_id=$2 AND project_id=$3 AND applicability->>'repositoryId'=$4 AND applicability->>'branch'=$5`,
+      [id, caller.id, binding.projectId, binding.repositoryId, binding.branch])).rows[0];
+    if (!receipt) throw refuse();
+    const pins = (await tx.query<{ memory_id: string; revision: number; status_generation: number | null; denied: boolean }>(
+      `SELECT ri.memory_id, ri.revision, ri.status_generation, EXISTS (
+        SELECT 1 FROM memory_evidence me WHERE me.memory_id=ri.memory_id AND me.revision=ri.revision
+        AND NOT EXISTS (SELECT 1 FROM source_read_access a WHERE a.source_id=me.source_id
+          AND a.principal_id=$2 AND a.access_observed_at >= $3)) AS denied
+       FROM retrieval_items ri WHERE ri.retrieval_id=$1 AND ri.status='approved' ORDER BY ri.position`,
+      [id, caller.id, accessFreshSince(scoped)])).rows;
+    if (pins.some(pin => pin.denied)) throw refuse();
+    const items: ReceiptCheck["items"] = [];
+    let unknown = !pins.length || receipt.outcome !== "results";
+    for (const pin of pins) {
+      const memory = await findReadableMemory(tx, scoped, caller, pin.memory_id);
+      if (!memory || memory.projectId !== binding.projectId) throw refuse();
+      // A newer revision can move to another readable branch. Never expose its revision across this binding.
+      if (!memory.applicability || memory.applicability.repositoryId !== binding.repositoryId || memory.applicability.branch !== binding.branch) throw refuse();
+      if (pin.status_generation === null) { unknown = true; continue; }
+      const reasons = decisionPinIssues(memory, { revision: pin.revision, statusGeneration: pin.status_generation }, binding, now);
+      let replacement = null;
+      if (memory.supersededBy) {
+        const m = await findReadableMemory(tx, scoped, caller, memory.supersededBy);
+        if (m && m.projectId === binding.projectId && decisionPinIssues(m, m, binding, now).length === 0) replacement = { memoryId: m.id, revision: m.revision };
+      }
+      items.push({ memoryId: memory.id, pinnedRevision: pin.revision, observedRevision: memory.revision, reasons, replacement });
+    }
+    return { status: items.some(item => item.reasons.length) ? "STALE" : unknown ? "UNKNOWN" : "CURRENT", items };
+  });
 }

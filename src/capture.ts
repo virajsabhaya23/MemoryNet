@@ -16,7 +16,7 @@ import {
   type Source,
   type SourceRow,
 } from "./knowledge.ts";
-import { PROVIDERS, type Provider } from "./repositories.ts";
+import type { Provider } from "./repositories.ts";
 import {
   isPullRequestUrl,
   requireCommitSha,
@@ -85,7 +85,7 @@ export async function captureMergedPullRequest(
   ctx: MemoryNetContext,
   event: MergedPullRequestEvent,
 ): Promise<CaptureResult> {
-  const provider = requireOneOf(event.provider, PROVIDERS, "provider");
+  const provider = requireOneOf(event.provider, ["github"] as const, "provider");
   const externalRepositoryId = requireGithubId(
     event.externalRepositoryId,
     "externalRepositoryId",

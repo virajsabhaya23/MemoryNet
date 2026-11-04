@@ -1,5 +1,6 @@
 import type { z } from "zod";
 import {
+  AGENT_REVALIDATE_PATH, ReceiptQuerySchema, ReceiptCheckSchema, type ReceiptQuery, type ReceiptCheck,
   AGENT_CONTEXT_PATH,
   AGENT_PROPOSALS_PATH,
   AGENT_REPORTS_PATH,
@@ -34,6 +35,7 @@ export class AgentRequestRefused extends Error {
 }
 
 export interface AgentBridge {
+  revalidate(input: ReceiptQuery): Promise<ReceiptCheck>;
   context(input: AgentQuery): Promise<AgentContextResponse>;
   taskContext(input: AgentTaskQuery): Promise<AgentTaskContextResponse>;
   propose(input: AgentProposeInput): Promise<AgentProposalReceipt>;
@@ -78,6 +80,7 @@ export function createAgentBridge(baseUrl: string, token: string): AgentBridge {
     }
   }
   return {
+    revalidate: input => call(AGENT_REVALIDATE_PATH, input, ReceiptQuerySchema, ReceiptCheckSchema, true),
     context: (input) => call(AGENT_CONTEXT_PATH, input, AgentQuerySchema, AgentContextSchema, false),
     taskContext: (input) => call(AGENT_TASK_CONTEXT_PATH, input, AgentTaskQuerySchema, AgentTaskContextSchema, true),
     propose: (input) => call(AGENT_PROPOSALS_PATH, input, AgentProposeSchema, AgentProposalReceiptSchema, true),

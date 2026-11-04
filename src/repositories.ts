@@ -1,3 +1,4 @@
+import { repositoryProvider, requireRepositoryId } from "./repository-identity.ts";
 import {
   findPrincipal,
   requireCaller,
@@ -14,13 +15,12 @@ import {
   optionalDate,
   requireBoolean,
   requireGithubFullName,
-  requireGithubId,
   requireId,
   requireOneOf,
   requireText,
 } from "./validation.ts";
 
-export const PROVIDERS = ["github"] as const;
+export const PROVIDERS = ["github", "local"] as const;
 export type Provider = (typeof PROVIDERS)[number];
 
 export interface RepositoryConnection {
@@ -81,13 +81,10 @@ function requireRepository(input: {
   provider: unknown;
   externalRepositoryId: unknown;
 }): { provider: Provider; externalRepositoryId: string } {
-  return {
-    provider: requireOneOf(input.provider, PROVIDERS, "provider"),
-    externalRepositoryId: requireGithubId(
-      input.externalRepositoryId,
-      "externalRepositoryId",
-    ),
-  };
+  const provider = requireOneOf(input.provider, PROVIDERS, "provider");
+  const externalRepositoryId = requireRepositoryId(input.externalRepositoryId, "externalRepositoryId");
+  if (repositoryProvider(externalRepositoryId) !== provider) throw new ValidationError("Repository ID does not match provider");
+  return { provider, externalRepositoryId };
 }
 
 /** Links a repository to a project. A repository can belong to only one project at a time. */

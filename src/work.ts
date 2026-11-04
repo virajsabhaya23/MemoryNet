@@ -1,3 +1,4 @@
+import { REPOSITORY_ID } from "./repository-identity.ts";
 import { createHash } from "node:crypto";
 import { z } from "zod";
 import { requireCaller, requireRole, resolveScope, type Principal } from "./access.ts";
@@ -17,7 +18,7 @@ const ArtifactSchema = z.object({
 }).strict();
 export const WorkInputSchema = z.object({
   projectId: z.uuid(), title: z.string().trim().min(1).max(200),
-  repositoryId: z.string().regex(/^[1-9][0-9]{0,18}$/), branch: z.string().min(1).max(255),
+  repositoryId: z.string().regex(REPOSITORY_ID), branch: z.string().min(1).max(255),
   codeCommit: z.string().regex(/^(?:[a-f0-9]{40}|[a-f0-9]{64})$/),
   artifacts: z.array(ArtifactSchema).min(1).max(40),
   decisions: z.array(z.object({ memoryId: z.uuid(), revision: z.number().int().positive() }).strict()).min(1).max(20),
@@ -29,7 +30,7 @@ export interface WorkRecord {
   id: string; projectId: string; createdBy: string; title: string; repositoryId: string; branch: string;
   codeCommit: string; artifacts: Artifact[]; createdAt: Date; closedAt: Date | null; pins: WorkPin[];
 }
-export interface WorkIssue { memoryId: string; pinnedRevision: number; reason: "revision_changed" | "lifecycle_changed" | "not_approved" | "outside_validity" }
+export interface WorkIssue { memoryId: string; pinnedRevision: number; observedRevision?: number; reason: "revision_changed" | "lifecycle_changed" | "not_approved" | "outside_validity" }
 export interface WorkAssessment { work: WorkRecord; checkedAt: Date; contextStatus: "current" | "review_needed"; issues: WorkIssue[] }
 interface WorkRow {
   id: string; project_id: string; created_by: string; title: string; repository_id: string; branch: string;
@@ -101,16 +102,21 @@ async function load(q: Queryable, ctx: MemoryNetContext, caller: Principal, row:
   }
   return { work, memories };
 }
+export function decisionPinIssues(memory: Memory, pin: Pick<WorkPin, "revision" | "statusGeneration">,
+  scope: { repositoryId: string; branch: string }, checkedAt: Date) {
+  const reasons: WorkIssue["reason"][] = [];
+  if (memory.status !== "approved") reasons.push("not_approved");
+  if (memory.revision !== pin.revision) reasons.push("revision_changed");
+  if (memory.statusGeneration !== pin.statusGeneration) reasons.push("lifecycle_changed");
+  if (!applicable(memory, scope.repositoryId, scope.branch, checkedAt)) reasons.push("outside_validity");
+  return reasons;
+}
 function assess(ctx: MemoryNetContext, work: WorkRecord, memories: Memory[]): WorkAssessment {
   const checkedAt = ctx.now(), issues: WorkIssue[] = [];
   for (const [i, pin] of work.pins.entries()) {
     const memory = memories[i]!;
-    const reasons: WorkIssue["reason"][] = [];
-    if (memory.status !== "approved") reasons.push("not_approved");
-    if (memory.revision !== pin.revision) reasons.push("revision_changed");
-    if (memory.statusGeneration !== pin.statusGeneration) reasons.push("lifecycle_changed");
-    if (!applicable(memory, work.repositoryId, work.branch, checkedAt)) reasons.push("outside_validity");
-    for (const reason of reasons) issues.push({ memoryId: pin.memoryId, pinnedRevision: pin.revision, reason });
+    const reasons = decisionPinIssues(memory, pin, work, checkedAt);
+    for (const reason of reasons) issues.push({ memoryId: pin.memoryId, pinnedRevision: pin.revision, observedRevision: memory.revision, reason });
   }
   return { work, checkedAt, contextStatus: issues.length ? "review_needed" : "current", issues };
 }

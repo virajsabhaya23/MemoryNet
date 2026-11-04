@@ -1,3 +1,4 @@
+import { LOCAL_DOCUMENT, repositoryProvider, requireRepositoryId } from "./repository-identity.ts";
 import {
   hasFreshRepositoryAccess,
   requireCaller,
@@ -43,7 +44,6 @@ import {
   optionalCommitSha,
   optionalLimit,
   optionalText,
-  requireGithubId,
   requireHttpsUrl,
   requireId,
   requireIds,
@@ -114,14 +114,14 @@ export function normalizeDecisionApplicability(value: DecisionApplicabilityInput
   const validFrom = decisionDate(value.validFrom, "validFrom");
   const validUntil = value.validUntil == null ? null : decisionDate(value.validUntil, "validUntil");
   if (validUntil !== null && validUntil.getTime() <= validFrom.getTime()) throw new ValidationError("validUntil must follow validFrom (exclusive end)");
-  return { repositoryId: requireGithubId(value.repositoryId, "repositoryId"), branch: requireDecisionBranch(value.branch), validFrom, validUntil };
+  return { repositoryId: requireRepositoryId(value.repositoryId, "repositoryId"), branch: requireDecisionBranch(value.branch), validFrom, validUntil };
 }
 function applicabilityJson(value: DecisionApplicability | null): string | null { return value === null ? null : JSON.stringify(value); }
 function sameApplicability(a: DecisionApplicability | null, b: DecisionApplicability | null): boolean { return applicabilityJson(a) === applicabilityJson(b); }
 export async function requireDecisionApplicabilityAccess(q: Queryable, ctx: MemoryNetContext, caller: Principal, projectId: string, applicability: DecisionApplicability | null): Promise<string | null> {
   if (applicability === null) return null;
-  const row = (await q.query<{ id: string }>("SELECT id FROM repository_connections WHERE project_id=$1 AND provider='github' AND external_repository_id=$2 AND disconnected_at IS NULL", [projectId, applicability.repositoryId])).rows[0];
-  if (!row || !(await hasFreshRepositoryAccess(q, caller.id, "github", applicability.repositoryId, accessFreshSince(ctx)))) throw new NotFoundError("Applicability repository not found");
+  const row = (await q.query<{ id: string }>("SELECT id FROM repository_connections WHERE project_id=$1 AND provider=$3 AND external_repository_id=$2 AND disconnected_at IS NULL", [projectId, applicability.repositoryId, repositoryProvider(applicability.repositoryId)])).rows[0];
+  if (!row || !(await hasFreshRepositoryAccess(q, caller.id, repositoryProvider(applicability.repositoryId), applicability.repositoryId, accessFreshSince(ctx)))) throw new NotFoundError("Applicability repository not found");
   return row.id;
 }
 
@@ -792,14 +792,17 @@ export async function recordSource(
 ): Promise<Source> {
   const projectId = requireId(input.projectId, "projectId");
   const provider = requireOneOf(input.provider, PROVIDERS, "provider");
-  const externalRepositoryId = requireGithubId(
-    input.externalRepositoryId,
-    "externalRepositoryId",
-  );
-  const pullNumber = requirePullRequestReference(input.reference, "reference");
-  const reference = `pull/${pullNumber}`;
-  const url = requireHttpsUrl(input.url, "url");
+  const externalRepositoryId = requireRepositoryId(input.externalRepositoryId, "externalRepositoryId");
+  if (repositoryProvider(externalRepositoryId) !== provider) throw new ValidationError("Repository ID does not match provider");
   const revision = optionalCommitSha(input.revision, "revision");
+  const pullNumber = provider === "github" ? requirePullRequestReference(input.reference, "reference") : null;
+  const reference = pullNumber === null ? input.reference : `pull/${pullNumber}`;
+  const url = provider === "github" ? requireHttpsUrl(input.url, "url") : input.url;
+  if (provider === "local" && (!revision || !/^[a-f0-9]{40}$/.test(revision) || !LOCAL_DOCUMENT.test(reference) ||
+      !url.startsWith(`memorynet-local://${externalRepositoryId}/${revision}/${reference}#sha256=`) ||
+      !/^[0-9a-f]{64}$/.test(url.split("#sha256=")[1] ?? "") || url.split("#").length !== 2)) {
+    throw new ValidationError("Local evidence requires an allowed document, exact commit and SHA-256 citation");
+  }
   const excerpt = requireText(
     input.excerpt,
     "excerpt",
@@ -842,7 +845,7 @@ export async function recordSource(
         "You do not currently have access to this repository",
       );
     }
-    if (!isPullRequestUrl(url, pullNumber, connection.full_name)) {
+    if (pullNumber !== null && !isPullRequestUrl(url, pullNumber, connection.full_name)) {
       throw new ValidationError(
         `url must link to ${reference} of ${connection.full_name} on github.com`,
       );
@@ -1433,7 +1436,7 @@ async function countingApproverIds(
   for (const { reviewer_id: reviewerId } of rows) {
     // Only the ID matters to the read rule; approvers are always people (enforced by a foreign key).
     const reviewer: Principal = { id: reviewerId, kind: "human", displayName: "", githubUserId: null };
-    if (proposal.applicability && !(await hasFreshRepositoryAccess(q, reviewerId, "github", proposal.applicability.repositoryId, accessFreshSince(ctx)))) continue;
+    if (proposal.applicability && !(await hasFreshRepositoryAccess(q, reviewerId, repositoryProvider(proposal.applicability.repositoryId), proposal.applicability.repositoryId, accessFreshSince(ctx)))) continue;
     if (relations.links.length > 0) {
       const visible = await readableMemoryIds(q, ctx, reviewer, READABLE_MEMORIES_SQL, relations.links.map((link) => link.memoryId));
       if (visible.size !== relations.links.length) continue;

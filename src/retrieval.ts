@@ -1,3 +1,4 @@
+import { requireRepositoryId } from "./repository-identity.ts";
 import {
   requireCaller,
   requireRole,
@@ -27,7 +28,7 @@ import {
   type MemoryType,
 } from "./knowledge.ts";
 import { MINIMUM_ROLE, ROLE_RANK } from "./roles.ts";
-import { optionalLimit, requireGithubId, requireId, requireText } from "./validation.ts";
+import { optionalLimit, requireId, requireText } from "./validation.ts";
 
 /** results: current guidance was supplied. no_results: none was. failed: nothing was searched. */
 export const RETRIEVAL_OUTCOMES = ["results", "no_results", "failed"] as const;
@@ -214,8 +215,8 @@ export async function recordRetrieval(
   );
   for (const [index, item] of record.items.entries()) {
     await q.query(
-      `INSERT INTO retrieval_items (retrieval_id, position, memory_id, revision, status)
-       VALUES ($1, $2, $3, $4, $5)`,
+      `INSERT INTO retrieval_items (retrieval_id, position, memory_id, revision, status, status_generation)
+       VALUES ($1, $2, $3, $4, $5, (SELECT status_generation FROM memories WHERE id=$3 AND current_revision=$4))`,
       [id, index + 1, item.memoryId, item.revision, item.status],
     );
   }
@@ -303,7 +304,7 @@ export async function getContext(
   if (input.applicability !== undefined) {
     const value = input.applicability;
     if (value === null || typeof value !== "object" || Array.isArray(value) || Object.keys(value).some((key) => !["repositoryId", "branch", "at"].includes(key))) throw new ValidationError("Invalid context applicability");
-    const repositoryId = requireGithubId(value.repositoryId, "repositoryId"), branch = requireDecisionBranch(value.branch);
+    const repositoryId = requireRepositoryId(value.repositoryId, "repositoryId"), branch = requireDecisionBranch(value.branch);
     const at = value.at === undefined ? observedAt : normalizeDecisionApplicability({ repositoryId, branch, validFrom: value.at })!.validFrom;
     if (!Number.isFinite(at.getTime()) || at.getTime() !== observedAt.getTime()) throw new ValidationError("Only current-time applicability queries are supported; historical/future reconstruction is unavailable");
     applicability = { repositoryId, branch, at };
@@ -414,7 +415,7 @@ export async function listRetrievals(
      WHERE project_id = $1 AND ($2::boolean OR caller_id = $3)
        AND (rt.applicability IS NULL OR EXISTS(SELECT 1 FROM repository_connections rc JOIN repository_access ra
          ON ra.provider=rc.provider AND ra.external_repository_id=rc.external_repository_id
-         WHERE rc.project_id=rt.project_id AND rc.provider='github' AND rc.external_repository_id=rt.applicability->>'repositoryId'
+         WHERE rc.project_id=rt.project_id AND rc.external_repository_id=rt.applicability->>'repositoryId'
            AND rc.disconnected_at IS NULL AND ra.principal_id=$3 AND ra.can_read AND ra.observed_at >= $5))
      ORDER BY retrieved_at DESC, id DESC
      LIMIT $4`,

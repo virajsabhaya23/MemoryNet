@@ -55,7 +55,7 @@ export async function runDecisionDemo() {
         env: { MEMORYNET_AGENT_BINDING_FILE: bindingFile, MEMORYNET_APP_URL: `http://127.0.0.1:${port}` },
         stderr: "pipe", maxBufferSize: 512_000,
       }));
-      assert.deepEqual((await client.listTools()).tools.map(tool => tool.name), ["get_context", "get_task_context"]);
+      assert.deepEqual((await client.listTools()).tools.map(tool => tool.name), ["revalidate_context", "get_context", "get_task_context"]);
       return client;
     }
     async function retrieve(client: Client) {
