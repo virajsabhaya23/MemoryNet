@@ -1026,9 +1026,9 @@ export function createGraphView(canvas, options = {}) {
       ctx.arc(x, y, r, 0, TAU);
     } else {
       const sides = { diamond: 4, triangle: 3, square: 4, hexagon: 6, pentagon: 5 }[shape] ?? 4;
-      const turn = shape === "diamond" || shape === "square" ? Math.PI / 4 : -Math.PI / 2;
+      const turn = { diamond: -Math.PI / 2, square: Math.PI / 4 }[shape] ?? -Math.PI / 2;
       for (let i = 0; i < sides; i += 1) {
-        const angle = turn + (i / sides) * TAU + (shape === "square" ? Math.PI / 4 : 0);
+        const angle = turn + (i / sides) * TAU;
         const px = x + r * Math.cos(angle);
         const py = y + r * Math.sin(angle);
         if (i === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py);

@@ -306,3 +306,9 @@ test("the draw layer is flat Cobalt: no spheres, glow sprites, or light particle
   assert.match(source, /assignTiers/);
   assert.match(source, /convexHull/);
 });
+
+test("diamond and square shapes point differently (source is a diamond, instruction a square)", () => {
+  const source = readFileSync(new URL("../src/web/assets/graph-engine.js", import.meta.url), "utf8");
+  assert.match(source, /diamond: -Math\.PI \/ 2/);
+  assert.match(source, /square: Math\.PI \/ 4/);
+});

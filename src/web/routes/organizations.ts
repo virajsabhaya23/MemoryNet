@@ -237,7 +237,7 @@ async function home(rc: RequestContext): Promise<WebResponse> {
     ? (await listReviewQueue(rc.ctx, user.id, { limit: 200 }).catch(() => [])).length
     : 0;
   const workRows: SafeHtml[] = [];
-  let suspendedTotal = 0;
+  const suspendedRows: SafeHtml[] = [];
   for (const { project } of visibleProjects) {
     const work = await listWork(rc.ctx, user.id, project.id).catch(() => []);
     const stale = work.filter((item) => item.contextStatus === "review_needed").length;
@@ -249,12 +249,18 @@ async function home(rc: RequestContext): Promise<WebResponse> {
       }));
     }
     const suspended = await listMemories(rc.ctx, user.id, { scope: { level: "project", id: project.id }, status: "suspended", limit: 200 }).catch(() => []);
-    suspendedTotal += suspended.length;
+    if (suspended.length > 0) {
+      suspendedRows.push(ledgerRow({
+        href: `/projects/${project.id}#current-knowledge`,
+        title: `${suspended.length} suspended ${suspended.length === 1 ? "memory is" : "memories are"} not current guidance in ${project.name}`,
+        meta: "Suspended knowledge",
+      }));
+    }
   }
   const needsYou: SafeHtml[] = [
     ...(pendingReviews > 0 ? [ledgerRow({ href: "/review", title: `${pendingReviews} ${pendingReviews === 1 ? "proposal" : "proposals"} waiting for your review`, meta: "Review queue" })] : []),
     ...workRows,
-    ...(suspendedTotal > 0 ? [ledgerRow({ href: "/review", title: `${suspendedTotal} suspended ${suspendedTotal === 1 ? "memory is" : "memories are"} not current guidance`, meta: "Suspended knowledge" })] : []),
+    ...suspendedRows,
   ];
   return page(rc, {
     title: "Organizations",
@@ -392,7 +398,7 @@ async function organizationPage(rc: RequestContext): Promise<WebResponse> {
       ${statStrip([
         ["Business units", tree.businessUnits.length],
         ["Projects", tree.businessUnits.reduce((sum, unit) => sum + unit.projects.length, 0)],
-        ["Your role", tree.role ? "Assigned" : "None"],
+        ["Your role", tree.role ?? "None"],
       ])}
       <section>
         <h2>Business units and projects you can see</h2>
