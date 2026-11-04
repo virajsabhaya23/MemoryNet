@@ -1,7 +1,9 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
+import { listReviewQueue } from "../src/index.ts";
+import { scopeFromPath } from "../src/web/kit.ts";
 import { useTestDatabase } from "./helpers.ts";
-import { openApp, TestBrowser } from "./web-helpers.ts";
+import { as, idOf, loadExample, openApp, personId, TestBrowser } from "./web-helpers.ts";
 
 const env = useTestDatabase();
 
@@ -21,4 +23,42 @@ test("served stylesheet carries the Cobalt tokens and key component", async () =
   assert.match(css.body, /\.record-head/);
   assert.match(css.body, /\.stat-strip/);
   assert.match(css.body, /\.scope-tabs/);
+});
+
+test("scopeFromPath reads the scope out of app URLs", () => {
+  assert.deepEqual(scopeFromPath("/projects/abc/work"), { level: "project", id: "abc" });
+  assert.deepEqual(scopeFromPath("/orgs/x/network"), { level: "organization", id: "x" });
+  assert.deepEqual(scopeFromPath("/business-units/u1"), { level: "business_unit", id: "u1" });
+  assert.equal(scopeFromPath("/review"), null);
+  assert.equal(scopeFromPath("/"), null);
+  assert.equal(scopeFromPath("/system"), null);
+});
+
+test("shell shows work nav everywhere and scope context inside a project", async () => {
+  const app = openApp(env.ctx);
+  await loadExample(app);
+  const olivia = await as(app, env.db, "Olivia Owner");
+  const home = await olivia.get("/");
+  assert.match(home.body, /data-nav="work"/);
+  assert.match(home.body, /href="\/review"/);
+  assert.doesNotMatch(home.body, /data-nav="context"/);
+  assert.doesNotMatch(home.body, /orgs\/undefined/);
+
+  const projectId = await idOf(env.db, "projects", "payments");
+  const project = await olivia.get(`/projects/${projectId}`);
+  assert.match(project.body, /data-nav="context"/);
+  assert.match(project.body, new RegExp(`href="/projects/${projectId}/work"`));
+  assert.match(project.body, new RegExp(`href="/projects/${projectId}/search"`));
+  assert.match(project.body, new RegExp(`href="/scopes/project/${projectId}/definitions"`));
+
+  const queue = await listReviewQueue(env.ctx, await personId(env.db, "Olivia Owner"), { limit: 200 });
+  if (queue.length > 0) assert.match(project.body, /data-review-count="\d+"/);
+});
+
+test("jump menu script is served as a same-origin module", async () => {
+  const app = openApp(env.ctx);
+  const browser = new TestBrowser(app);
+  const script = await browser.get("/assets/shell.js");
+  assert.equal(script.status, 200);
+  assert.match(script.headers["Content-Type"] ?? "", /text\/javascript/);
 });

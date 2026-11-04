@@ -1,6 +1,8 @@
 import { randomBytes, timingSafeEqual, createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { findPrincipal } from "../access.ts";
+import { listReviewQueue } from "../knowledge.ts";
+import { listOrganizations } from "../organizations.ts";
 import { createAgentContextHandler, type AgentBindingLoader } from "../agent-context/http.ts";
 import { AGENT_PATHS } from "../agent-context/contract.ts";
 import type { MemoryNetContext } from "../context.ts";
@@ -87,6 +89,7 @@ const FONTS = new Map([
 // Only the network and prompt anatomy pages load these; they read what the page embeds and fetch nothing.
 const SCRIPTS: ReadonlyMap<string, string> = new Map(
   [
+    "shell.js",
     "network.js",
     "icons.js",
     "graph-engine.js",
@@ -382,6 +385,16 @@ export function createApp(ctx: MemoryNetContext, options: AppOptions): App {
     };
     const respond = (response: WebResponse) => newLocalSession
       ? withCookie(response, sessionCookie(session!.token)) : response;
+    if (user && request.method === "GET") {
+      try {
+        rc.shell = {
+          reviewCount: user.kind === "human" ? (await listReviewQueue(ctx, user.id, { limit: 200 })).length : 0,
+          primaryOrganizationId: (await listOrganizations(ctx, user.id))[0]?.id ?? null,
+        };
+      } catch {
+        rc.shell = undefined;
+      }
+    }
     try {
       if((options.localPrincipalId || options.prototype || github) && /^\/system(?:\/|$)/.test(request.path)) return respond(errorPage(rc,404,"This test-only feature is disabled in this workspace."));
       const found = match(routes, request);

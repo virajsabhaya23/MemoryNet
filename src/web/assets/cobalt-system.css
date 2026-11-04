@@ -192,6 +192,39 @@ tbody tr:hover { background: var(--paper-2); }
 pre { background: var(--paper-2); color: var(--ink); }
 .org-mark { background: var(--accent); color: var(--accent-ink); border: 1px solid var(--accent-deep); border-radius: 6px; box-shadow: none; }
 
+/* ————— Shell: rail sections, counts, jump menu ————— */
+.rail nav { display: flex; flex-direction: column; gap: 1.25rem; }
+.nav-section { display: grid; gap: 0.3rem; }
+.nav-heading { padding: 0 0.7rem; color: var(--muted); font-size: 0.75rem; font-weight: 500; }
+.nav-count {
+  margin-left: auto; font-family: var(--font-data); font-size: 0.75rem;
+  background: var(--accent); color: var(--accent-ink); border-radius: 999px; padding: 0.05rem 0.5rem;
+}
+body .rail nav a[aria-disabled="true"] { opacity: 0.45; cursor: not-allowed; }
+body .rail nav a[aria-current="page"] { color: var(--accent-deep); border-color: var(--rule); background: var(--accent-wash); }
+.jump { position: relative; margin-left: auto; }
+.jump summary {
+  display: inline-flex; align-items: center; gap: 0.6rem; min-height: 36px; padding: 0.35rem 0.75rem;
+  border: 1px solid var(--rule-2); border-radius: var(--radius-input); background: var(--surface);
+  font-size: 0.8125rem; font-weight: 500; cursor: pointer; list-style: none;
+}
+.jump summary::-webkit-details-marker { display: none; }
+.jump-keys { display: inline-flex; gap: 0.2rem; }
+.jump-keys kbd {
+  font-family: var(--font-data); font-size: 0.7rem; border: 1px solid var(--rule-2);
+  border-bottom-width: 2px; border-radius: 4px; padding: 0.05rem 0.3rem; background: var(--paper-2);
+}
+.jump-menu {
+  position: absolute; right: 0; top: calc(100% + 0.4rem); z-index: 50; min-width: 14rem;
+  display: grid; padding: 0.4rem; background: var(--surface); border: 1px solid var(--rule);
+  border-radius: var(--radius-card); box-shadow: var(--shadow-panel);
+}
+.jump-menu a { padding: 0.55rem 0.7rem; border-radius: var(--radius-input); color: var(--ink); text-decoration: none; font-size: 0.9rem; }
+.jump-menu a:hover, .jump-menu a:focus-visible { background: var(--accent-wash); }
+.workspace-bar .jump { margin-left: auto; }
+.workspace-bar > a { margin-left: 0; }
+@media (max-width: 52rem) { .jump-keys { display: none; } .rail nav { flex-direction: row; flex-wrap: wrap; } }
+
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { transition: none !important; animation: none !important; scroll-behavior: auto !important; }
 }
