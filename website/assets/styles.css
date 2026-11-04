@@ -329,3 +329,15 @@ html.js .reveal.is-visible { opacity: 1; transform: none; }
 @media (max-width: 70rem) { .bento { grid-template-columns: repeat(2, minmax(0, 1fr)); } .steps { grid-template-columns: repeat(2, minmax(0, 1fr)); } .hero-stats { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
 @media (max-width: 40rem) { .pain-grid, .steps { grid-template-columns: minmax(0, 1fr); } .bento { grid-template-columns: minmax(0, 1fr); } .bento-wide { grid-column: auto; } .hero-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); } .hero-panel-bar { flex-wrap: wrap; } .hero-panel-live { display: none; } .hero-panel-body { padding: var(--space-md); } }
 @media (prefers-reduced-motion: reduce) { .hg-edges path { animation: none; } .pain-grid article, .bento-card { transition: none; } }
+
+/* ————— Guide & docs premium Cobalt ————— */
+.guide-intro.hero { background: linear-gradient(160deg, var(--cobalt-deep-2), var(--cobalt-deep) 72%); border-radius: 18px; padding: var(--space-2xl); color: oklch(93% 0.012 250); box-shadow: 0 26px 60px -24px oklch(12% 0.05 262 / .65), 0 0 56px -20px oklch(58% 0.19 256 / .5); }
+.guide-intro.hero::before { display: none; }
+.guide-intro h1 { color: #fff; }
+.guide-intro > .lead { color: oklch(80% 0.022 256); }
+.guide-nav a { padding-inline: var(--space-md); border-radius: 8px; border-left: 3px solid transparent; transition: background .18s ease, color .18s ease; }
+.guide-nav a:hover { background: var(--color-accent-wash); border-left-color: var(--color-accent); }
+.guide-article h2 { display: flex; align-items: center; gap: var(--space-md); }
+.guide-article h2::before { content: ""; flex: 0 0 4px; align-self: stretch; min-height: 1.2em; border-radius: 4px; background: linear-gradient(180deg, oklch(56% 0.20 258), oklch(43% 0.20 262)); }
+.guide-article .light-code { background: oklch(17% 0.045 262); border-color: oklch(35% 0.06 260); color: oklch(84% 0.04 254); box-shadow: 0 16px 34px -18px oklch(12% 0.05 262 / .7); }
+.guide-article ol li::marker, .guide-article ul li::marker { color: var(--color-accent); font-weight: 700; }

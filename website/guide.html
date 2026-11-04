@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="description" content="Install MemoryNet locally, navigate your organization’s network, maintain reviewed decisions, connect MCP, and understand the local pilot’s boundaries.">
-  <meta name="theme-color" content="#f7fafc"><title>Run MemoryNet locally</title>
+  <meta name="theme-color" content="#081120"><title>Run MemoryNet locally</title>
   <link rel="icon" href="./assets/icon.svg" type="image/svg+xml"><link rel="stylesheet" href="./assets/styles.css">
   <script src="./assets/site.js" defer></script>
 </head>
@@ -20,15 +20,16 @@
     <article class="guide-article">
       <div class="hero guide-intro"><h1>Run MemoryNet locally.</h1>
       <p class="lead">Try reviewed decisions and changing requirements with a public repository, then connect a coding agent.</p></div>
+      <section id="demo"><h2>See a decision change first</h2><p><a href="./demo.html">Open the three-minute read-only replay</a>, or run <code>npm run demo</code> after installing dependencies. It generates <code>.local/decision-demo/index.html</code> and a JSON report using a temporary database. It uses scripted extraction and fixture approvals, real MCP clients, and actual stale-export checks. It makes no external API calls and does not open your existing workspace.</p></section>
       <section id="install">
         <h2>Install the source</h2>
-        <p>Use Node.js 24 or newer, npm, and Git. Start from a checkout of the <a href="https://github.com/virajsabhaya23/MemoryNet">source repository</a> or an exported source distribution and run these commands in its root directory.</p>
+        <p>Use Node.js 24 or newer, npm, and Git. Start from a MemoryNet source checkout or exported source distribution and run these commands in its root directory. Get the source from the <a href="https://github.com/virajsabhaya23/MemoryNet">MemoryNet repository</a>.</p>
         <div class="command-block"><div class="command-heading"><span>Terminal</span><button class="copy-button" type="button" data-copy="guide-install">Copy commands</button><span role="status" aria-live="polite"></span></div><pre><code id="guide-install">npm ci --ignore-scripts
 npm run check
-MEMORYNET_PROTOTYPE_CONFIG=off MEMORYNET_DATA_DIR=.data/first-trial npm run app</code></pre></div>
+MEMORYNET_AUTH_MODE=sandbox MEMORYNET_PROTOTYPE_CONFIG=off MEMORYNET_DATA_DIR=.data/first-trial npm run app</code></pre></div>
         <p>Open <code>http://127.0.0.1:3050</code>. In this isolated development sandbox, choose <strong>System → Load synthetic example data</strong>, then select a test person. A model account, API key, and database server are not required. The picker lets anyone at this computer act as these local principals; it is not authentication.</p>
         <p>The app creates <code>.data/first-trial/</code>. Keep it on loopback and stop it with Ctrl+C before another process uses the same database. These shell examples work in macOS/Linux shells; on other shells set the named environment variables before running the command.</p>
-        <p><strong>Local configuration:</strong> a clean source checkout starts the development sandbox. If an optional <code>.local/prototype/config.json</code> exists, its operator and database settings take precedence. Setting <code>MEMORYNET_PROTOTYPE_CONFIG=off</code> above selects the sandbox explicitly. Optional access-key mode disables System fixture controls and persona switching; it has no turnkey provisioning command.</p>
+        <p><strong>Local configuration:</strong> a clean checkout starts the development sandbox. A workspace created by <code>npm run setup</code> opens as its configured local operator with <code>npm start</code>. Existing GitHub and access-key gates remain enabled; <code>MEMORYNET_AUTH_MODE</code> selects a mode explicitly. An optional <code>.local/prototype/config.json</code> selects access-key mode, a configured operator, a database, and pinned source checkouts. Its database overrides <code>MEMORYNET_DATA_DIR</code>; <code>MEMORYNET_PROTOTYPE_CONFIG=off</code> disables prepared configuration and <code>MEMORYNET_AUTH_MODE=sandbox</code> explicitly selects test personas. Optional GitHub sign-in replaces the picker and disables System fixture controls; see <code>docs/prototype.md</code>.</p>
       </section>
       <section id="your-repository">
         <h2>Try your personal public repository</h2>
@@ -64,7 +65,7 @@ MEMORYNET_PROTOTYPE_CONFIG=off MEMORYNET_DATA_DIR=.data/personal-trial npm run a
         </ol>
         <p><strong>Your network</strong> starts with you and the places you can access. It distinguishes your own role from access inherited through an organization or business unit. Open a place to expand its knowledge, then follow its link to the project page. Administrators can manage roles at the organization, business-unit, or project level.</p>
         <p>Use <kbd>⌘</kbd> + <kbd>K</kbd> or <kbd>/</kbd> to search the full map, the arrow keys to move between items, and <kbd>Enter</kbd> to select. The <strong>Table</strong> view and the list below the map provide the records without the diagram. Filters and saved views help return to a particular area; saved views stay in your browser.</p>
-        <p>Tasks are tracked separately under a project’s <strong>Affected work</strong> page. Agent definitions describe their responsibilities and instructions; the map does not run agents. The homepage shows application screenshots using public evidence. The website itself does not provide a live application or connect to your records.</p>
+        <p>Tasks are tracked separately under a project’s <strong>Affected work</strong> page. Agent definitions describe their responsibilities and instructions; the map does not run agents. The homepage shows screenshots of the separately configured Vercel prototype, using original repository checkouts and public PR evidence. The website itself does not provide a live application or connect to your records.</p>
       </section>
       <section id="first-decision">
         <h2>Try one decision change</h2>
@@ -79,7 +80,12 @@ MEMORYNET_PROTOTYPE_CONFIG=off MEMORYNET_DATA_DIR=.data/personal-trial npm run a
       </section>
       <section id="mcp">
         <h2>Connect a coding agent</h2>
-        <p>The local MCP server offers read-only <code>get_context</code>. It returns approved guidance for an operator-bound repository, exact branch, and current validity interval. Host-specific installation still needs verification for the client you use.</p>
+        <p>The quickest path creates a separate workspace for one GitHub repository, a reviewer, a coding agent and its MCP configuration in one step. Run it in the MemoryNet source directory; <code>--client</code> also accepts <code>claude</code>, <code>cursor</code> or <code>codex</code>:</p>
+        <pre class="light-code"><code>npm run setup -- --repo OWNER/REPO --reviewer "A teammate" --client vscode --project-dir ../REPO
+npm start
+npm run doctor -- --project-dir ../REPO</code></pre>
+        <p>The agent can call <code>get_task_context</code> with the task and the files it will touch, propose decisions with <code>propose_memory</code> and report stale guidance with <code>report_outdated</code>. It can never approve: a different person approves each exact version on the Review page. The written client file holds local paths, never the credential. Launches were verified with the official MCP SDK client, not inside every coding application. To connect the importer workspace above by hand instead, follow the steps below.</p>
+        <p>The local MCP server also offers <code>get_context</code>. It returns approved guidance for an operator-bound repository, exact branch, and current validity interval.</p>
         <p>First approve at least one decision with matching repository, exact branch, and currently active validity interval. Pending and legacy unscoped records are excluded. Use the importer agent ID printed by the public import (it already has local contributor and repository-read assignments), or create an agent principal and grant those assignments yourself in the sandbox.</p>
         <p>Replace each uppercase placeholder below. The repository ID is GitHub's numeric ID, not <code>owner/name</code>; the project ID is MemoryNet's UUID. Run the command in the MemoryNet source directory:</p>
         <pre class="light-code"><code>mkdir -p .local/mcp
@@ -97,7 +103,7 @@ MEMORYNET_AGENT_BINDING_FILE="$PWD/.local/mcp/agent-main.json" npm run app</code
     "MEMORYNET_APP_URL": "http://127.0.0.1:3050"
   }
 }</code></pre>
-        <p>Ask the host to call <code>get_context</code> with a query about your approved decision. Check returned IDs, versions, citations, and applicability. An empty result can mean no approved scoped match; an authorization or transport error is a different outcome. The bridge retrieves context only; it does not edit your repo or make an agent follow the guidance.</p>
+        <p>Ask the host to call <code>get_context</code> with a query about your approved decision. Check returned IDs, versions, citations, and applicability. An empty result can mean no approved scoped match; an authorization or transport error is a different outcome. This manually generated v1 binding retrieves context only. The v2 binding created by setup can also submit pending proposals and outdated reports; it never grants approval.</p>
         <p>The owner-only binding expires after 24 hours and grants no database roles itself. Keep it private. This stdio bridge is local authorization, not remote OAuth. Run <code>npm run eval:smoke</code> for an isolated protocol check.</p>
       </section>
       <section id="recovery">
@@ -112,9 +118,9 @@ MEMORYNET_PROTOTYPE_CONFIG=off MEMORYNET_DATA_DIR=.data/recovered npm run app</c
       <section id="limits">
         <h2>The production boundary</h2>
         <p>This is a local pilot. Shared or private-data production still requires:</p>
-        <ul><li>Verified sign-in, tenant membership, and authenticated agent delegation.</li><li>Signed GitHub ingestion and live repository-permission updates.</li><li>Record deletion, retention, backup expiry, and restore policy.</li><li>Supported deployment, monitoring, load testing, and recovery drills.</li></ul>
-        <p>Automatic task notifications, task-bound MCP, broader search, and verified spec-tool integration are partial or absent. Fresh context and matching hashes do not establish code compliance.</p>
-        <p>See <code>SECURITY.md</code> in the source repository for supported-use and trust boundaries. GitHub Pages serves this website; it does not host the MemoryNet application.</p>
+        <ul><li>Hosted identity, tenant membership, and remote agent delegation.</li><li>Signed GitHub ingestion and permission synchronization beyond signed-in users.</li><li>Record deletion, retention, backup expiry, and restore policy.</li><li>Supported deployment, monitoring, load testing, and recovery drills.</li></ul>
+        <p>Product work also remains: automatic task notifications, persistent task-bound delivery, and verified spec-tool integration are partial or absent. Real-team benefit and repeat adoption have not been established.</p>
+        <p>The repository’s <code>docs/production-readiness.md</code> lists acceptance checks. GitHub Pages serves this website; it does not host the MemoryNet application.</p>
       </section>
       <a class="text-link" href="./">Return to MemoryNet</a>
     </article>
