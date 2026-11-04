@@ -32,6 +32,7 @@ import { listRetrievals, type RetrievalRecord } from "../../retrieval.ts";
 import {
   badge,
   html,
+  ledgerRow,
   options,
   preview,
   table,
@@ -628,7 +629,8 @@ async function reviewQueuePage(rc: RequestContext): Promise<WebResponse> {
   const batchable = (proposal: Proposal) => !needsIndividualReview(proposal) && !progress.get(proposal.id)?.counting.includes(user.id);
   return page(rc, {
     title: "Review",
-    body: html`<section>
+    body: html`<div class="review-layout">
+      <section class="review-queue">
         <h2>Waiting for your review</h2>
         <p class="hint">
           Pending proposals in projects where you are a reviewer, oldest first.
@@ -636,45 +638,50 @@ async function reviewQueuePage(rc: RequestContext): Promise<WebResponse> {
         </p>
         <form method="post" action="/review/batch" class="stacked review-batch">
           ${csrfField(rc)}
-          ${table(
-            ["", "Proposal", "Project", "Version", "Approvals", "Proposed by", "Waiting since"],
-            queue.map((proposal) => {
-              const count = progress.get(proposal.id);
-              return [
-                batchable(proposal)
-                  ? html`<input type="checkbox" name="approve" value="${proposal.id}:${proposal.revision}" aria-label="Select ${proposal.title}" />`
-                  : html`<span class="muted" title="Flagged text or evidence, or already approved by you: review it on its own page">—</span>`,
-                html`<a href="/proposals/${proposal.id}">${proposal.title}</a>
-                  ${flagBadges(proposal.flags)}
-                  <br /><span class="muted">${preview(proposal.content, 140)}</span>`,
-                html`<a href="/projects/${proposal.projectId}">${projectName(proposal.projectId)}</a>`,
-                html`${proposal.revision}`,
-                html`${count ? `${count.counting.length} of ${count.required}` : "0 of 1"}`,
-                html`${nameOf(names, proposal.proposedBy)} ${names.get(proposal.proposedBy)?.kind === "agent" ? badge("agent", "warn") : ""}`,
-                html`${proposal.proposedAt}`,
-              ];
-            }),
-            "Nothing is waiting for your review.",
-          )}
+          ${queue.length === 0
+            ? html`<p class="empty">Nothing is waiting for your review.</p>`
+            : html`<ul class="ledger">
+                ${queue.map((proposal) => {
+                  const count = progress.get(proposal.id);
+                  return ledgerRow({
+                    href: `/proposals/${proposal.id}`,
+                    title: html`${proposal.title} ${flagBadges(proposal.flags)}`,
+                    meta: html`${projectName(proposal.projectId)} · version ${proposal.revision} · by ${nameOf(names, proposal.proposedBy)}${names.get(proposal.proposedBy)?.kind === "agent" ? html` ${badge("agent", "warn")}` : ""} · ${preview(proposal.content, 140)}`,
+                    trailing: html`<span class="approval-progress">${count ? `${count.counting.length} of ${count.required}` : "0 of 1"}</span> ${batchable(proposal)
+                      ? html`<input type="checkbox" name="approve" value="${proposal.id}:${proposal.revision}" aria-label="Select ${proposal.title}" />`
+                      : html`<span class="muted" title="Flagged text or evidence, or already approved by you: review it on its own page">—</span>`}`,
+                  });
+                })}
+              </ul>`}
           ${queue.some(batchable) ? html`<label class="choice"><input type="checkbox" name="confirm" value="yes" required />
               I read the text and evidence of each selected proposal and approve exactly the version shown.</label>
-            <button type="submit">Approve selected</button>
+            <button type="submit" class="key key-primary">Approve selected</button>
             <p class="hint">Each selection approves only the version listed, in its own step; a proposal that changed is refused.
               Proposals whose text or evidence is flagged must be reviewed on their own page. At most ${BATCH_LIMIT} at a time.</p>` : ""}
         </form>
+        <section>
+          <h2>Your proposals waiting for someone else</h2>
+          ${mine.length === 0
+            ? html`<p class="empty">None.</p>`
+            : html`<ul class="ledger">
+                ${mine.map((proposal) => ledgerRow({
+                  href: `/proposals/${proposal.id}`,
+                  title: proposal.title,
+                  meta: html`${projectName(proposal.projectId)} · version ${proposal.revision}`,
+                }))}
+              </ul>`}
+        </section>
       </section>
-      <section>
-        <h2>Your proposals waiting for someone else</h2>
-        ${table(
-          ["Proposal", "Project", "Version"],
-          mine.map((proposal) => [
-            html`<a href="/proposals/${proposal.id}">${proposal.title}</a>`,
-            html`${projectName(proposal.projectId)}`,
-            html`${proposal.revision}`,
-          ]),
-          "None.",
-        )}
-      </section>`,
+      <aside class="review-pane panel" aria-label="Reading pane">
+        ${queue[0]
+          ? html`<p class="record-kind">Next up</p>
+              <p class="record-title">${queue[0].title}</p>
+              <p>${preview(queue[0].content, 280)}</p>
+              <p class="hint">${projectName(queue[0].projectId)} · version ${queue[0].revision} · proposed by ${nameOf(names, queue[0].proposedBy)} · since ${queue[0].proposedAt}</p>
+              <p><a class="key key-primary" href="/proposals/${queue[0].id}">Read and decide</a></p>`
+          : html`<p class="record-kind">Reading pane</p><p>Nothing is waiting. When a proposal arrives, it opens here with its evidence and approval policy.</p>`}
+      </aside>
+    </div>`,
   });
 }
 

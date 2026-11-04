@@ -235,6 +235,12 @@ body .rail nav a[aria-current="page"] { color: var(--accent-deep); border-color:
 .needs-you .ledger { border-top: 0; }
 .org-ledger .org-mark { display: inline-grid; place-items: center; width: 2rem; height: 2rem; font-family: var(--font-display); font-weight: 600; }
 
+/* ————— Review two-pane ————— */
+.review-layout { display: grid; grid-template-columns: minmax(0, 1.5fr) minmax(0, 1fr); gap: 1.5rem; align-items: start; }
+.review-pane { position: sticky; top: 1rem; }
+.approval-progress { font-family: var(--font-data); font-size: 0.8125rem; color: var(--muted); white-space: nowrap; }
+@media (max-width: 52rem) { .review-layout { grid-template-columns: minmax(0, 1fr); } .review-pane { position: static; } }
+
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { transition: none !important; animation: none !important; scroll-behavior: auto !important; }
 }

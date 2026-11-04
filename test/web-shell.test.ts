@@ -77,6 +77,16 @@ test("project page is a tabbed workspace with ledger knowledge", async () => {
   assert.match(project.body, /class="ledger/);
 });
 
+test("review queue is a two-pane ledger", async () => {
+  const app = openApp(env.ctx);
+  await loadExample(app);
+  const rhea = await as(app, env.db, "Rhea Reviewer");
+  const queue = await rhea.get("/review");
+  assert.match(queue.body, /class="review-layout"/);
+  assert.match(queue.body, /class="review-pane/);
+  assert.match(queue.body, /Waiting for your review/);
+});
+
 test("organization and business-unit pages use the record template", async () => {
   const app = openApp(env.ctx);
   await loadExample(app);
