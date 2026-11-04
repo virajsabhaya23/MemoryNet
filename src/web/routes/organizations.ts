@@ -54,6 +54,8 @@ import {
   scopePath,
 } from "../views.ts";
 import { definitionsSummary } from "./definitions.ts";
+import { brainSection } from "./brain.ts";
+import { analyzeBrainHealth } from "../../brain.ts";
 import { integrityLink, policySection } from "./governance.ts";
 import {
   exportForm,
@@ -285,6 +287,18 @@ async function home(rc: RequestContext): Promise<WebResponse> {
     ...workRows,
     ...suspendedRows,
   ];
+  for (const organization of organizations) {
+    const brain = await analyzeBrainHealth(rc.ctx, user.id, { organizationId: organization.id }).catch(() => []);
+    for (const finding of brain) {
+      if (finding.kind !== "warning_nodes" && finding.kind !== "flagged_nodes" && finding.kind !== "uncited_sources") continue;
+      needsYou.push(ledgerRow({
+        href: finding.href,
+        title: finding.label,
+        meta: "Brain health",
+        trailing: html`<span class="badge" data-kind="guidance">Brain</span>`,
+      }));
+    }
+  }
   return page(rc, {
     title: "Organizations",
     workspace: true,
@@ -660,6 +674,7 @@ async function projectPage(rc: RequestContext): Promise<WebResponse> {
         "current-knowledge",
       )}
       ${await definitionsSummary(rc, scope, view.tree.organization.id)}
+      ${await brainSection(rc, project.id, view.tree.organization.id, canPropose)}
       ${user.kind === "human" && canPropose
         ? await proposalsSection(rc, project.id)
         : ""}
