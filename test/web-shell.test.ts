@@ -25,6 +25,17 @@ test("served stylesheet carries the Cobalt tokens and key component", async () =
   assert.match(css.body, /\.scope-tabs/);
 });
 
+test("the Cobalt layer is compact-pro density", async () => {
+  const app = openApp(env.ctx);
+  const css = await new TestBrowser(app).get("/assets/style.css");
+  // The Cobalt layer loads last, so its declarations are the ones that win.
+  const cobalt = css.body.slice(css.body.indexOf("MemoryNet Cobalt system"));
+  assert.match(cobalt, /\.key, a\.key, button\.key \{[^}]*min-height: 34px/);
+  assert.match(cobalt, /body input, body select, body textarea \{[^}]*min-height: 36px/);
+  assert.match(cobalt, /\.ledger-row \{[^}]*padding: 0\.55rem 0\.75rem/);
+  assert.match(cobalt, /\.panel \{[^}]*padding: 1rem/);
+});
+
 test("scopeFromPath reads the scope out of app URLs", () => {
   assert.deepEqual(scopeFromPath("/projects/abc/work"), { level: "project", id: "abc" });
   assert.deepEqual(scopeFromPath("/orgs/x/network"), { level: "organization", id: "x" });
@@ -169,4 +180,6 @@ test("overview is a triage ledger, not a hero dashboard", async () => {
     assert.match(home.body, /class="needs-you/);
     assert.match(home.body, /proposals? waiting/);
   }
+  assert.match(home.body, /Recent activity/);
+  assert.match(home.body, /org-mark hue-\d/);
 });

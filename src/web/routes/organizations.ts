@@ -238,6 +238,7 @@ async function home(rc: RequestContext): Promise<WebResponse> {
     : 0;
   const workRows: SafeHtml[] = [];
   const suspendedRows: SafeHtml[] = [];
+  const activity: Array<{ at: Date; row: SafeHtml }> = [];
   for (const { project } of visibleProjects) {
     const work = await listWork(rc.ctx, user.id, project.id).catch(() => []);
     const stale = work.filter((item) => item.contextStatus === "review_needed").length;
@@ -246,6 +247,7 @@ async function home(rc: RequestContext): Promise<WebResponse> {
         href: `/projects/${project.id}/work`,
         title: `${stale} work ${stale === 1 ? "item needs" : "items need"} review in ${project.name}`,
         meta: "Context is no longer current",
+        trailing: html`<span class="badge" data-state="warning">Stale</span>`,
       }));
     }
     const suspended = await listMemories(rc.ctx, user.id, { scope: { level: "project", id: project.id }, status: "suspended", limit: 200 }).catch(() => []);
@@ -254,11 +256,32 @@ async function home(rc: RequestContext): Promise<WebResponse> {
         href: `/projects/${project.id}#current-knowledge`,
         title: `${suspended.length} suspended ${suspended.length === 1 ? "memory is" : "memories are"} not current guidance in ${project.name}`,
         meta: "Suspended knowledge",
+        trailing: html`<span class="badge" data-state="flagged">Suspended</span>`,
       }));
     }
+    const approved = await listMemories(rc.ctx, user.id, { scope: { level: "project", id: project.id }, limit: 20 }).catch(() => []);
+    for (const memory of approved) {
+      activity.push({ at: memory.approvedAt, row: ledgerRow({
+        href: `/memories/${memory.id}`,
+        title: memory.title,
+        meta: html`Approved in ${project.name} · ${memory.approvedAt}`,
+        trailing: html`<span class="badge" data-kind="knowledge">Approved</span>`,
+      }) });
+    }
+    const sources = await listSources(rc.ctx, user.id, { scope: { level: "project", id: project.id }, limit: 20 }).catch(() => []);
+    for (const source of sources) {
+      activity.push({ at: source.capturedAt, row: ledgerRow({
+        href: `/sources/${source.id}`,
+        title: source.reference,
+        meta: html`Captured in ${project.name} · ${source.capturedAt}`,
+        trailing: html`<span class="badge" data-kind="evidence">Captured</span>`,
+      }) });
+    }
   }
+  activity.sort((a, b) => b.at.getTime() - a.at.getTime());
+  const recentActivity = activity.slice(0, 6).map((item) => item.row);
   const needsYou: SafeHtml[] = [
-    ...(pendingReviews > 0 ? [ledgerRow({ href: "/review", title: `${pendingReviews} ${pendingReviews === 1 ? "proposal" : "proposals"} waiting for your review`, meta: "Review queue" })] : []),
+    ...(pendingReviews > 0 ? [ledgerRow({ href: "/review", title: `${pendingReviews} ${pendingReviews === 1 ? "proposal" : "proposals"} waiting for your review`, meta: "Review queue", trailing: html`<span class="badge" data-state="pending">Review</span>` })] : []),
     ...workRows,
     ...suspendedRows,
   ];
@@ -298,6 +321,12 @@ async function home(rc: RequestContext): Promise<WebResponse> {
             <ul class="ledger">${needsYou}</ul>
           </section>`
         : ""}
+      ${recentActivity.length > 0
+        ? html`<section aria-labelledby="activity-title">
+            <h2 id="activity-title">Recent activity</h2>
+            <ul class="ledger">${recentActivity}</ul>
+          </section>`
+        : ""}
       <section class="dash-section" aria-labelledby="orgs-title">
         <div class="dash-section-head">
           <h2 id="orgs-title">Your organizations</h2>
@@ -315,7 +344,7 @@ async function home(rc: RequestContext): Promise<WebResponse> {
                   ) ?? 0;
                 return ledgerRow({
                   href: `/orgs/${organization.id}`,
-                  title: html`<span class="org-mark" aria-hidden="true">${monogram(organization.name)}</span> ${organization.name}`,
+                  title: html`<span class="org-mark hue-${[...organization.slug].reduce((sum, char) => sum + char.charCodeAt(0), 0) % 4}" aria-hidden="true">${monogram(organization.name)}</span> ${organization.name}`,
                   meta: html`${organization.slug} · ${units} ${units === 1 ? "unit" : "units"} · ${projects} ${projects === 1 ? "project" : "projects"}`,
                   trailing: html`${roleBadge(tree?.role ?? null)} <a href="/orgs/${organization.id}/network${organization.slug.endsWith("-evidence") ? "?evidence=all" : ""}">Network</a> <a href="/orgs/${organization.id}/you">Your network</a>`,
                 });
