@@ -1,0 +1,38 @@
+name: CLA
+
+# Requires the pull-request author and every human commit author to agree to CLA.md. Agreements are recorded on the
+# cla-signatures branch and reported as the "cla" commit status. pull_request_target lets the job comment on and set a
+# status for pull requests from forks; it checks out and runs only base-branch code (.github/scripts/cla.mjs) and never
+# checks out, builds or executes pull-request code.
+
+on:
+  pull_request_target:
+    types: [opened, reopened, synchronize]
+  issue_comment:
+    types: [created, edited]
+
+permissions: {}
+
+jobs:
+  cla:
+    # Runs only in the canonical repository; forks do not record agreements.
+    if: github.repository == 'virajsabhaya23/MemoryNet' && (github.event_name == 'pull_request_target' || (github.event.issue.pull_request && contains(github.event.comment.body, 'MemoryNet CLA')))
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: write # record agreements on the cla-signatures branch
+      pull-requests: write # comment on the pull request
+      statuses: write # set the cla commit status
+    concurrency:
+      group: cla-${{ github.event.pull_request.number || github.event.issue.number }}
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+          sparse-checkout: .github/scripts
+      - uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        with:
+          script: |
+            const { run } = await import(`${process.env.GITHUB_WORKSPACE}/.github/scripts/cla.mjs`);
+            core.info(JSON.stringify(await run({ github, context })));

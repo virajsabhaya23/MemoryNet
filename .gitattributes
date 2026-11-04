@@ -1,0 +1,9 @@
+# Check out text with LF on every platform so hashes, fixtures and generated schemas match on Windows.
+* text=auto eol=lf
+
+# Keep upstream license texts byte-for-byte.
+*OFL.txt -text -whitespace
+
+*.jpg binary
+*.png binary
+*.woff2 binary
