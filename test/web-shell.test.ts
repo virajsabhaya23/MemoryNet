@@ -62,3 +62,21 @@ test("jump menu script is served as a same-origin module", async () => {
   assert.equal(script.status, 200);
   assert.match(script.headers["Content-Type"] ?? "", /text\/javascript/);
 });
+
+test("overview is a triage ledger, not a hero dashboard", async () => {
+  const app = openApp(env.ctx);
+  await loadExample(app);
+  const olivia = await as(app, env.db, "Olivia Owner");
+  const home = await olivia.get("/");
+  assert.doesNotMatch(home.body, /dash-hero/);
+  assert.match(home.body, /class="stat-strip"/);
+  assert.match(home.body, /Your organizations/);
+  const orgId = await idOf(env.db, "organizations", "acme-synthetic");
+  assert.match(home.body, new RegExp(`href="/orgs/${orgId}/network"`));
+  assert.match(home.body, /class="ledger/);
+  const queue = await listReviewQueue(env.ctx, await personId(env.db, "Olivia Owner"), { limit: 200 });
+  if (queue.length > 0) {
+    assert.match(home.body, /class="needs-you/);
+    assert.match(home.body, /proposals? waiting/);
+  }
+});

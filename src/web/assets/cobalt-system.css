@@ -225,6 +225,16 @@ body .rail nav a[aria-current="page"] { color: var(--accent-deep); border-color:
 .workspace-bar > a { margin-left: 0; }
 @media (max-width: 52rem) { .jump-keys { display: none; } .rail nav { flex-direction: row; flex-wrap: wrap; } }
 
+/* ————— Dashboard head + needs-you ————— */
+.dash-head { padding: 0 0 1.5rem; border-bottom: 1px solid var(--rule); margin-bottom: 1.5rem; }
+.dash-head h1 { font-size: 2.25rem; margin: 0 0 0.5rem; }
+.dash-lede { max-width: 66ch; color: var(--ink-2); line-height: 1.65; }
+.dash-actions { display: flex; flex-wrap: wrap; gap: 0.75rem; margin-top: 1rem; }
+.needs-you { margin-bottom: 1.5rem; }
+.needs-you h2 { margin-top: 0; }
+.needs-you .ledger { border-top: 0; }
+.org-ledger .org-mark { display: inline-grid; place-items: center; width: 2rem; height: 2rem; font-family: var(--font-display); font-weight: 600; }
+
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { transition: none !important; animation: none !important; scroll-behavior: auto !important; }
 }

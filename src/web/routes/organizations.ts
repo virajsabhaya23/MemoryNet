@@ -1,6 +1,7 @@
 import { resolveScope, type ScopeRef } from "../../access.ts";
 import { NotFoundError } from "../../errors.ts";
-import { listMemories, listSources } from "../../knowledge.ts";
+import { listMemories, listReviewQueue, listSources } from "../../knowledge.ts";
+import { listWork } from "../../work.ts";
 import {
   assignRole,
   listOwnRoles,
@@ -30,7 +31,7 @@ import {
   type Role,
 } from "../../roles.ts";
 import { requireId } from "../../validation.ts";
-import { badge, html, options, table, type SafeHtml } from "../html.ts";
+import { badge, html, ledgerRow, options, statStrip, table, type SafeHtml } from "../html.ts";
 import {
   formValue,
   interfaceIcon,
@@ -227,11 +228,39 @@ async function home(rc: RequestContext): Promise<WebResponse> {
     ),
   );
   const firstName = user.displayName.split(/\s+/)[0] ?? user.displayName;
+  // Needs-you: only scopes this person can already see, counted with the same
+  // permission-checked reads as the pages each row links to.
+  const visibleProjects = trees.flatMap((tree) =>
+    tree ? tree.businessUnits.flatMap((unit) => unit.projects.map((project) => ({ project, organizationName: tree.organization.name }))) : [],
+  );
+  const pendingReviews = user.kind === "human"
+    ? (await listReviewQueue(rc.ctx, user.id, { limit: 200 }).catch(() => [])).length
+    : 0;
+  const workRows: SafeHtml[] = [];
+  let suspendedTotal = 0;
+  for (const { project } of visibleProjects) {
+    const work = await listWork(rc.ctx, user.id, project.id).catch(() => []);
+    const stale = work.filter((item) => item.contextStatus === "review_needed").length;
+    if (stale > 0) {
+      workRows.push(ledgerRow({
+        href: `/projects/${project.id}/work`,
+        title: `${stale} work ${stale === 1 ? "item needs" : "items need"} review in ${project.name}`,
+        meta: "Context is no longer current",
+      }));
+    }
+    const suspended = await listMemories(rc.ctx, user.id, { scope: { level: "project", id: project.id }, status: "suspended", limit: 200 }).catch(() => []);
+    suspendedTotal += suspended.length;
+  }
+  const needsYou: SafeHtml[] = [
+    ...(pendingReviews > 0 ? [ledgerRow({ href: "/review", title: `${pendingReviews} ${pendingReviews === 1 ? "proposal" : "proposals"} waiting for your review`, meta: "Review queue" })] : []),
+    ...workRows,
+    ...(suspendedTotal > 0 ? [ledgerRow({ href: "/review", title: `${suspendedTotal} suspended ${suspendedTotal === 1 ? "memory is" : "memories are"} not current guidance`, meta: "Suspended knowledge" })] : []),
+  ];
   return page(rc, {
     title: "Organizations",
     workspace: true,
     body: html`<div class="dash">
-      <header class="dash-hero">
+      <header class="dash-head">
         <h1>${greeting()}, ${firstName}.</h1>
         <p class="dash-lede">
           ${rc.prototype ? "Explore original source, inspect imported pull requests, and review engineering knowledge before publishing it." : "Your organizations' shared memory: the decisions, lessons, and rules your teams and AI tools rely on, each with its source, owner, and history."}
@@ -239,31 +268,37 @@ async function home(rc: RequestContext): Promise<WebResponse> {
         <div class="dash-actions">
           ${organizations[0]
             ? html`<a
-                  class="button-link"
+                  class="key key-primary"
                   href="/orgs/${organizations[0].id}/network${organizations[0].slug.endsWith("-evidence") ? "?evidence=all" : ""}"
                   >Open the network${interfaceIcon("network")}</a
                 >
-                <a class="ghost-link" href="/orgs/${organizations[0].id}/you"
+                <a class="key" href="/orgs/${organizations[0].id}/you"
                   >Your network${interfaceIcon("person")}</a
                 >`
             : ""}
-          <a class="ghost-link" href="/review">${interfaceIcon("review")}Review queue</a>
+          <a class="key" href="/review">${interfaceIcon("review")}Review queue</a>
         </div>
       </header>
 
-      <dl class="dash-summary" aria-label="Your accessible workspace">
-        <div><dt>Organizations</dt><dd>${organizations.length}</dd></div>
-        <div><dt>Business units</dt><dd>${trees.reduce((sum, tree) => sum + (tree?.businessUnits.length ?? 0), 0)}</dd></div>
-        <div><dt>Projects</dt><dd>${trees.reduce((sum, tree) => sum + (tree?.businessUnits.reduce((count, unit) => count + unit.projects.length, 0) ?? 0), 0)}</dd></div>
-        <div><dt>Assigned roles</dt><dd>${own.length}</dd></div>
-      </dl>
+      ${statStrip([
+        ["Organizations", organizations.length],
+        ["Business units", trees.reduce((sum, tree) => sum + (tree?.businessUnits.length ?? 0), 0)],
+        ["Projects", trees.reduce((sum, tree) => sum + (tree?.businessUnits.reduce((count, unit) => count + unit.projects.length, 0) ?? 0), 0)],
+        ["Assigned roles", own.length],
+      ])}
+      ${needsYou.length > 0
+        ? html`<section class="needs-you panel" aria-labelledby="needs-title">
+            <h2 id="needs-title">Needs you</h2>
+            <ul class="ledger">${needsYou}</ul>
+          </section>`
+        : ""}
       <section class="dash-section" aria-labelledby="orgs-title">
         <div class="dash-section-head">
           <h2 id="orgs-title">Your organizations</h2>
           <span class="count-pill">${organizations.length}</span>
         </div>
         ${organizations.length > 0
-          ? html`<ul class="cards org-cards">
+          ? html`<ul class="ledger org-ledger">
               ${organizations.map((organization, index) => {
                 const tree = trees[index];
                 const units = tree?.businessUnits.length ?? 0;
@@ -272,34 +307,12 @@ async function home(rc: RequestContext): Promise<WebResponse> {
                     (sum, unit) => sum + unit.projects.length,
                     0,
                   ) ?? 0;
-                return html`<li class="org-card">
-                  <a href="/orgs/${organization.id}" class="org-card-title"
-                    ><span class="org-mark" aria-hidden="true"
-                      >${monogram(organization.name)}</span
-                    ><span>${organization.name}</span></a
-                  >
-                  <small class="org-slug">${organization.slug}</small>
-                  <dl class="org-stats">
-                    <div>
-                      <dt>Units</dt>
-                      <dd>${units}</dd>
-                    </div>
-                    <div>
-                      <dt>Projects</dt>
-                      <dd>${projects}</dd>
-                    </div>
-                    <div>
-                      <dt>Your role</dt>
-                      <dd>${roleBadge(tree?.role ?? null)}</dd>
-                    </div>
-                  </dl>
-                  <span class="card-actions"
-                    ><a href="/orgs/${organization.id}/network${organization.slug.endsWith("-evidence") ? "?evidence=all" : ""}"
-                      >Open the network${interfaceIcon("network")}</a
-                    >
-                    <a href="/orgs/${organization.id}/you">Your network${interfaceIcon("person")}</a>
-                  </span>
-                </li>`;
+                return ledgerRow({
+                  href: `/orgs/${organization.id}`,
+                  title: html`<span class="org-mark" aria-hidden="true">${monogram(organization.name)}</span> ${organization.name}`,
+                  meta: html`${organization.slug} · ${units} ${units === 1 ? "unit" : "units"} · ${projects} ${projects === 1 ? "project" : "projects"}`,
+                  trailing: html`${roleBadge(tree?.role ?? null)} <a href="/orgs/${organization.id}/network${organization.slug.endsWith("-evidence") ? "?evidence=all" : ""}">Network</a> <a href="/orgs/${organization.id}/you">Your network</a>`,
+                });
               })}
             </ul>`
           : html`<div class="empty-state">
