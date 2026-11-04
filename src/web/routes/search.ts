@@ -9,7 +9,7 @@ import {
   type RetrievalRecord,
 } from "../../retrieval.ts";
 import { ROLE_RANK } from "../../roles.ts";
-import { badge, externalLink, html, table, type SafeHtml } from "../html.ts";
+import { badge, externalLink, html, ledgerRow, table, type SafeHtml } from "../html.ts";
 import {
   page,
   requireUser,
@@ -235,7 +235,7 @@ async function searchPage(rc: RequestContext): Promise<WebResponse> {
     title: `Search ${view.project.name}`,
     crumbs: projectCrumbs(view),
     status,
-    body: html`<section>
+    body: html`<section class="panel">
         <h2>Search knowledge</h2>
         <p class="hint">
           Finds current, approved knowledge you can read in this project, and
@@ -292,20 +292,16 @@ async function logPage(rc: RequestContext): Promise<WebResponse> {
         personal data. Memories you cannot read now are left out.
       </p>
       <p><a href="/projects/${projectId}/search">Search this project</a></p>
-      ${table(
-        ["When", "Who", "Searched for", "Returned"],
-        records.map((record) => [
-          html`<span id="r-${record.id}"
-            >${formatTime(record.retrievedAt)}</span
-          >`,
-          html`${nameOf(names, record.callerId)}`,
-          record.terms === null
-            ? html`<span class="muted">not recorded</span>`
-            : html`${termWords(record.terms)}`,
-          returned(record),
-        ]),
-        "No searches recorded here yet.",
-      )}`,
+      ${records.length === 0
+        ? html`<p class="empty">No searches recorded here yet.</p>`
+        : html`<ul class="ledger">
+            ${records.map((record) => ledgerRow({
+              href: `/projects/${projectId}/search`,
+              title: html`<span id="r-${record.id}">${formatTime(record.retrievedAt)}</span>`,
+              meta: html`${nameOf(names, record.callerId)} · ${record.terms === null ? "not recorded" : termWords(record.terms)}`,
+              trailing: returned(record),
+            }))}
+          </ul>`}`,
   });
 }
 

@@ -241,6 +241,12 @@ body .rail nav a[aria-current="page"] { color: var(--accent-deep); border-color:
 .approval-progress { font-family: var(--font-data); font-size: 0.8125rem; color: var(--muted); white-space: nowrap; }
 @media (max-width: 52rem) { .review-layout { grid-template-columns: minmax(0, 1fr); } .review-pane { position: static; } }
 
+/* ————— Remaining surfaces on the kit ————— */
+.prototype-login, .console-card { background: var(--surface); border: 1px solid var(--rule); border-radius: var(--radius-card); }
+.results.ledger > li { border-bottom: 1px solid var(--rule); padding: 1rem 0.75rem; }
+.work-item { margin-bottom: 1rem; }
+.work-item[data-status="review_needed"] { border-left: 3px solid var(--warning); }
+
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { transition: none !important; animation: none !important; scroll-behavior: auto !important; }
 }

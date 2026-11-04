@@ -77,6 +77,21 @@ test("project page is a tabbed workspace with ledger knowledge", async () => {
   assert.match(project.body, /class="ledger/);
 });
 
+test("search log, work and system pages use kit surfaces", async () => {
+  const app = openApp(env.ctx);
+  await loadExample(app);
+  const olivia = await as(app, env.db, "Olivia Owner");
+  const projectId = await idOf(env.db, "projects", "payments");
+  await olivia.get(`/projects/${projectId}/search?q=payments`);
+  const log = await olivia.get(`/projects/${projectId}/retrievals`);
+  assert.match(log.body, /class="ledger/);
+  const work = await olivia.get(`/projects/${projectId}/work`);
+  assert.match(work.body, /Affected work|No active work/);
+  assert.match(work.body, /class="panel|class="ledger/);
+  const system = await new TestBrowser(app).get("/system");
+  assert.match(system.body, /class="[^"]*\bpanel\b/);
+});
+
 test("definition and proposal pages use the record template", async () => {
   const app = openApp(env.ctx);
   await loadExample(app);

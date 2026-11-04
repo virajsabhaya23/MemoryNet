@@ -24,7 +24,7 @@ async function workPage(rc: RequestContext) {
     <p>${badge(`${affected.length} need review`, affected.length ? "warn" : "neutral")} ${items.length} visible active tasks</p>
     <p class="hint">Checked now against approved context. File links and commits are declared by contributors. These checks do not verify artifact contents, test coverage or code behavior.</p>
     ${items.length === 0 ? html`<p class="empty">No active work is tracked yet. Link a spec and approved decisions to start a context baseline.</p>` : ""}
-    ${[...affected, ...items.filter((i) => i.contextStatus === "current")].map((item) => html`<section>
+    ${[...affected, ...items.filter((i) => i.contextStatus === "current")].map((item) => html`<section class="panel work-item" data-status="${item.contextStatus}">
       <h2>${item.work.title}</h2>
       <p>${badge(item.contextStatus === "current" ? "Context current" : "Review needed", item.contextStatus === "current" ? "neutral" : "warn")}
       · repository ${item.work.repositoryId} · branch <code>${item.work.branch}</code></p>
@@ -35,7 +35,7 @@ async function workPage(rc: RequestContext) {
         <p>Review the decision history, update the linked artifacts, then create a new baseline. The original baseline stays unchanged.</p>` : html`<p><a href="/work/${item.work.id}/context.md">Download agent context for OpenSpec</a> · <a href="/work/${item.work.id}/context.json">Download JSON bundle</a></p>`}
       ${canWrite ? html`<form method="post" action="/work/${item.work.id}/close">${csrfField(rc)}<button type="submit">Close tracked task</button></form>` : ""}
     </section>`)}
-    ${canWrite ? html`<section><h2>Track a spec or task</h2>
+    ${canWrite ? html`<section class="panel"><h2>Track a spec or task</h2>
       <p>Use an approved decision's exact repository and branch. For OpenSpec, link the spec under <code>openspec/changes/&lt;change&gt;/specs/</code>, then put the downloaded context alongside that change's planning artifacts. MemoryNet owns the approved decision; this file is generated context.</p>
       <form method="post" action="/projects/${view.project.id}/work">${csrfField(rc)}
         <label>Task title <input name="title" required maxlength="200"></label>
