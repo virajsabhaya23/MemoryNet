@@ -32,3 +32,9 @@ Use `.env.local` or the in-memory settings form for model keys. Keep `.data/`, `
 Use the repository's **Security → Report a vulnerability** option if the maintainer has enabled private reporting. If no private channel is available, open a minimal issue asking the maintainer for a private contact method without including exploit details or sensitive data. Do not put keys, private evidence, tokens, or affected users' data in a public issue.
 
 Include affected revisions, reproduction steps using synthetic data, expected and observed behavior, and likely impact. Never send a live credential as proof. No response-time commitment is currently published.
+
+## Local checkout discovery
+
+Use only explicitly selected public or synthetic repositories on a stable, trusted filesystem. Preview reads bounded Git metadata through a temporary bare repository. It ignores the checkout's Git configuration for object access, disables network transports and never executes checkout hooks or scripts. It checks object-store entry types and rejects alternates and links. Imports read only the selected committed blob, check its entire text for recognized secrets and keep a hash plus excerpt. Free-form Markdown can still contain sensitive information or instructions. A malicious same-user process changing directories during inspection is outside the trust boundary.
+
+The local reader has its own project database and exact-branch binding. An explicit public upstream attachment declares source access inside that database. Revocations in other isolated databases do not propagate. Revalidation checks current role, binding, current evidence and historical cited evidence. Permission loss can withhold the entire report. Previously downloaded responses and backups can still contain historical text.

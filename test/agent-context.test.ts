@@ -107,3 +107,31 @@ test("checked-in JSON schemas match the executable contracts", async () => {
     assert.deepEqual(JSON.parse(await readFile(new URL(`../docs/contracts/${name}.schema.json`, import.meta.url), "utf8")), z.toJSONSchema(schema), name);
   }
 });
+
+test("revalidation hides foreign receipts, refuses expired authority and keeps empty or legacy receipts unknown", async () => {
+  const w = await buildWorld(env.ctx), b = binding(w);
+  const { revalidateAgentReceipt } = await import("../src/agent-context/service.ts");
+  const received = await getAgentContext(env.ctx, b, { query: "controlled" });
+  const query = { retrievalId: received.retrievalId };
+  assert.deepEqual(await revalidateAgentReceipt(env.ctx, b, query), { status: "UNKNOWN", items: [] });
+  const denied = await revalidateAgentReceipt(env.ctx, { ...b, branch: "unrelated" }, query).catch(e => e);
+  assert.ok(denied instanceof ForbiddenError);
+  await assert.rejects(revalidateAgentReceipt(env.ctx, { ...b, expiresAt: START.toISOString() }, query), ForbiddenError);
+  const { approveProposal, proposeMemory, suspendMemory, reinstateMemory } = await import("../src/index.ts");
+  const p = await proposeMemory(env.ctx, w.people.contributor.id, { projectId: b.projectId, type: "decision", title: "Hedge policy",
+    content: "No hedged requests.", evidenceSourceIds: [w.sources.alpha.id], applicability: { repositoryId: "1001", branch: "main", validFrom: START } });
+  const m = await approveProposal(env.ctx, w.people.reviewer.id, { proposalId: p.id, expectedRevision: 1 });
+  const r = await getAgentContext(env.ctx, b, { query: "hedge" }); assert.equal(r.current.length, 1);
+  const check = () => revalidateAgentReceipt(env.ctx, b, { retrievalId: r.retrievalId });
+  assert.equal((await check()).status, "CURRENT");
+  const legacyId = await env.db.transaction(async tx => {
+    const { rows: [legacy] } = await tx.query<{ id: string }>(`INSERT INTO retrievals (project_id,caller_id,search_terms,outcome,retrieved_at,applicability)
+      SELECT project_id,caller_id,search_terms,outcome,retrieved_at,applicability FROM retrievals WHERE id=$1 RETURNING id`, [r.retrievalId]);
+    await tx.query("INSERT INTO retrieval_items (retrieval_id,position,memory_id,revision,status) VALUES ($1,1,$2,1,'approved')", [legacy!.id, m.id]);
+    return legacy!.id;
+  });
+  assert.equal((await revalidateAgentReceipt(env.ctx, b, { retrievalId: legacyId })).status, "UNKNOWN");
+  await suspendMemory(env.ctx, w.people.reviewer.id, { memoryId: m.id, expectedRevision: 1, reason: "Fixture review" });
+  await reinstateMemory(env.ctx, w.people.reviewer.id, { memoryId: m.id, expectedRevision: 1, reason: "Fixture rechecked" });
+  assert.deepEqual((await check()).items[0]?.reasons, ["lifecycle_changed"]);
+});

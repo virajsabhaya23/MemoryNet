@@ -2,6 +2,8 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { approveProposal, proposeMemory, proposeChange, suspendMemory, reinstateMemory, revokeMemory,
   connectRepository, recordSource, recordRepositoryAccess, ConflictError, ForbiddenError, NotFoundError, ValidationError } from "../src/index.ts";
+import { getAgentContext, revalidateAgentReceipt } from "../src/agent-context/service.ts";
+import type { AgentBinding } from "../src/agent-context/binding.ts";
 import { createWork, listWork, exportWork, closeWork, type WorkInput } from "../src/work.ts";
 import { buildWorld, START, useTestDatabase } from "./helpers.ts";
 import { openApp, TestBrowser } from "./web-helpers.ts";
@@ -144,16 +146,27 @@ test("replacement flags the original task while a release-branch exception stays
 test("losing pinned historical evidence access hides task metadata even when current evidence is readable", async () => {
   const { w, memory, input } = await setup();
   await connectRepository(env.ctx, w.people.ownerA.id, { projectId: w.alpha.id, provider: "github", externalRepositoryId: "1009", fullName: "synthetic-org-a/old-evidence" });
-  for (const person of [w.people.contributor, w.people.reviewer, w.people.reader]) await recordRepositoryAccess(env.ctx,
+  for (const person of [w.people.contributor, w.people.reviewer, w.people.reader, w.people.agent]) await recordRepositoryAccess(env.ctx,
     { principalId: person.id, provider: "github", externalRepositoryId: "1009", canRead: true });
   const oldSource = await recordSource(env.ctx, w.people.contributor.id, { projectId: w.alpha.id, provider: "github", externalRepositoryId: "1009",
     reference: "pull/1", url: "https://github.com/synthetic-org-a/old-evidence/pull/1", revision: "a".repeat(40), excerpt: "Synthetic historical evidence." });
+  const binding: AgentBinding = { schemaVersion: 1, token: "c".repeat(64), projectId: w.alpha.id, repositoryId: "1001",
+    branch: "main", principalId: w.people.agent.id, expiresAt: new Date(START.getTime() + 86400000).toISOString() };
+  let deliveryId = "";
   for (const [expectedRevision, sourceId] of [[1, oldSource.id], [2, w.sources.alpha.id]] as const) {
     const p = await proposeChange(env.ctx, w.people.contributor.id, { memoryId: memory.id, expectedRevision,
       kind: "revise", type: "decision", title: `Policy revision ${expectedRevision + 1}`, content: `Synthetic policy revision ${expectedRevision + 1}.`, evidenceSourceIds: [sourceId] });
     await approveProposal(env.ctx, w.people.reviewer.id, { proposalId: p.id, expectedRevision: 1 });
-    if (expectedRevision === 1) await createWork(env.ctx, w.people.contributor.id, { ...input, title: "Historical sensitive task title", decisions: [{ memoryId: memory.id, revision: 2 }] });
+    if (expectedRevision === 1) {
+      await createWork(env.ctx, w.people.contributor.id, { ...input, title: "Historical sensitive task title", decisions: [{ memoryId: memory.id, revision: 2 }] });
+      const result = await getAgentContext(env.ctx, binding, { query: "Policy revision" });
+      assert.ok(result.current.some(item => item.memoryId === memory.id && item.revision === 2));
+      deliveryId = result.retrievalId;
+    }
   }
+  assert.equal((await revalidateAgentReceipt(env.ctx, binding, { retrievalId: deliveryId })).status, "STALE");
+  await recordRepositoryAccess(env.ctx, { principalId: binding.principalId, provider: "github", externalRepositoryId: "1009", canRead: false });
+  await assert.rejects(revalidateAgentReceipt(env.ctx, binding, { retrievalId: deliveryId }), { message: "Receipt unavailable in this scope" });
   const before = await listWork(env.ctx, w.people.reader.id, w.alpha.id);
   assert.equal(before.length, 1);
   await recordRepositoryAccess(env.ctx, { principalId: w.people.reader.id, provider: "github", externalRepositoryId: "1009", canRead: false });

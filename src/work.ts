@@ -30,7 +30,7 @@ export interface WorkRecord {
   id: string; projectId: string; createdBy: string; title: string; repositoryId: string; branch: string;
   codeCommit: string; artifacts: Artifact[]; createdAt: Date; closedAt: Date | null; pins: WorkPin[];
 }
-export interface WorkIssue { memoryId: string; pinnedRevision: number; observedRevision?: number; reason: "revision_changed" | "lifecycle_changed" | "not_approved" | "outside_validity" }
+export interface WorkIssue { memoryId: string; pinnedRevision: number; observedRevision: number; reason: "revision_changed" | "lifecycle_changed" | "not_approved" | "outside_validity" }
 export interface WorkAssessment { work: WorkRecord; checkedAt: Date; contextStatus: "current" | "review_needed"; issues: WorkIssue[] }
 interface WorkRow {
   id: string; project_id: string; created_by: string; title: string; repository_id: string; branch: string;

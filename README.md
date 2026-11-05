@@ -15,6 +15,12 @@ Open `.local/decision-demo/index.html` for the generated walkthrough, or preview
 
 **AI Decision Extraction** (Decision Guard) checks quotes and stages suggestions for review. **Stale-Work Radar** (Affected work) finds tasks pinned to outdated guidance. The **Agent Audit Trail** records the versions and citations each retrieval delivered. [Evaluation evidence](docs/evaluation.md) explains what has and has not been measured.
 
+## Try a folder of local Git projects
+
+Run `npm run demo:workspace` for an end-to-end test with disposable repositories, no account and no model calls. The JSON output shows the original receipt, the observed revision after a change and the citation from a separate upstream repository. The demo starts and stops real loopback servers and deletes its fixture data.
+
+To try your own public or synthetic checkouts, preview the folder with `npm run workspace -- preview --root /path/to/projects`. Then select a project and a single committed document. [Local workspace instructions](docs/usage.md#select-a-local-git-workspace) · [Release validation](RELEASE_VALIDATION.md)
+
 ## Quick start: your repository and your coding agent
 
 Use Node.js 24 or newer, npm and Git. The GitHub CLI (`gh auth login`) lets setup look up the repository; without it, add `--repo-id <numeric id> --branch main`. Everything runs on this computer. From a MemoryNet source checkout:

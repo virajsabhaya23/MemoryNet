@@ -1,7 +1,7 @@
 import { resolve } from "node:path";
 import { bindingCapabilities, readAgentBindingFile } from "../agent-context/binding.ts";
 import { parseFlags } from "../cli-args.ts";
-import { MCP_CLIENTS, mcpServerEntry, renderClientConfig, type McpClient } from "../client-config.ts";
+import { MCP_CLIENTS, codexSessionOption, mcpServerEntry, renderClientConfig, type McpClient } from "../client-config.ts";
 import { previewWorkspace, selectedCheckout } from "../local-discovery.ts";
 import { importLocalDocument, localProfilePath, registerLocalProject } from "../local-project.ts";
 import { readWorkspaceProfile } from "../workspace.ts";
@@ -9,7 +9,7 @@ import { readWorkspaceProfile } from "../workspace.ts";
 const usage = "workspace <preview|register|import|status|start|connect> --root DIR [--project PATH] [--at PREVIEW_SHA --fixture] [--document PATH] [--client NAME] [--sandbox]";
 try {
   const [action, ...args] = process.argv.slice(2);
-  const flags = parseFlags(args, { values: ["root", "project", "at", "document", "client", "port", "from"], switches: ["fixture", "sandbox", "share-public-source"] });
+  const flags = parseFlags(args, { values: ["root", "project", "at", "document", "client", "port", "from"], switches: ["fixture", "sandbox", "share-public-source", "session-option"] });
   const root = flags.value("root");
   if (!root) throw new Error(usage);
   if (action === "preview") {
@@ -49,7 +49,9 @@ try {
     } else if (action === "connect") {
       const client = flags.value("client") as McpClient | undefined;
       if (!client || !MCP_CLIENTS.includes(client)) throw new Error("Choose --client " + MCP_CLIENTS.join("|"));
-      console.log(renderClientConfig(client, mcpServerEntry(profile), null));
+      if (flags.has("session-option") && client !== "codex") throw new Error("--session-option requires --client codex");
+      const entry = mcpServerEntry(profile);
+      console.log(flags.has("session-option") ? codexSessionOption(entry) : renderClientConfig(client, entry, null));
     } else if (action === "status" || action === "register") {
       const binding = await readAgentBindingFile(profile.bindingFile);
       console.log(JSON.stringify({ project, branch: repository.branch, repositoryId: repository.id, projectId: profile.projectId,

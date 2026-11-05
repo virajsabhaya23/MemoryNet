@@ -37,6 +37,7 @@ const MIGRATIONS = [
   "017_brain.sql",
   "018_local_repositories.sql",
   "019_receipt_generation.sql",
+  "020_seal_receipt_generations.sql",
 ];
 
 test("records survive a restart and each migration runs once", async () => {

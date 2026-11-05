@@ -31,7 +31,7 @@ async function workPage(rc: RequestContext) {
       <p>Baseline commit <code>${item.work.codeCommit}</code> · created ${item.work.createdAt} · checked ${item.checkedAt}</p>
       <h3>Linked artifacts</h3><ul>${item.work.artifacts.map((a) => html`<li><code>${a.path}</code> · ${a.requirementId} · ${a.kind}<br><small>SHA-256 <code>${a.sha256}</code></small></li>`)}</ul>
       <h3>Decision versions</h3><ul>${item.work.pins.map((pin) => html`<li><a href="/memories/${pin.memoryId}">${pin.memoryId}</a> · version ${pin.revision}</li>`)}</ul>
-      ${item.issues.length ? html`<ul>${item.issues.map((issue) => html`<li><a href="/memories/${issue.memoryId}">Pinned v${issue.pinnedRevision}, observed v${issue.observedRevision ?? issue.pinnedRevision}</a> · ${reasons[issue.reason]}</li>`)}</ul>
+      ${item.issues.length ? html`<ul>${item.issues.map((issue) => html`<li><a href="/memories/${issue.memoryId}">Pinned v${issue.pinnedRevision}, observed v${issue.observedRevision}</a> · ${reasons[issue.reason]}</li>`)}</ul>
         <p>Review the decision history, update the linked artifacts, then create a new baseline. The original baseline stays unchanged.</p>` : html`<p><a href="/work/${item.work.id}/context.md">Download agent context for OpenSpec</a> · <a href="/work/${item.work.id}/context.json">Download JSON bundle</a></p>`}
       ${canWrite ? html`<form method="post" action="/work/${item.work.id}/close">${csrfField(rc)}<button type="submit">Close tracked task</button></form>` : ""}
     </section>`)}

@@ -51,6 +51,10 @@ export async function registerLocalProject(repo: LocalRepository, state: string,
 }
 
 export async function importLocalDocument(root: string, project: string, at: string, document: string, profile: WorkspaceProfile, publicSourceProject?: string) {
+  if (publicSourceProject) {
+    const { repository: target } = await selectedCheckout(root, project);
+    if (target.id !== profile.repository.id || target.branch !== profile.repository.branch) throw new Error("Target profile no longer matches this checkout");
+  }
   const { repository, evidence } = await selectedCheckout(root, publicSourceProject ?? project, document);
   if (!evidence || repository.commit !== at || (!publicSourceProject && (repository.id !== profile.repository.id || repository.branch !== profile.repository.branch))) {
     throw new Error("Checkout no longer matches the selected branch and preview. Preview again.");
@@ -67,6 +71,9 @@ export async function importLocalDocument(root: string, project: string, at: str
           await connectRepository(scoped, profile.operatorId, { projectId: profile.projectId, provider: "local",
             externalRepositoryId: repository.id, fullName: "local/" + (repository.project === "." ? "checkout" : basename(repository.project)) });
           for (const principalId of [profile.operatorId, ...profile.reviewerIds, profile.agentId]) {
+            const existing = await tx.query("SELECT 1 FROM repository_access WHERE provider='local' AND external_repository_id=$1 AND principal_id=$2",
+              [repository.id, principalId]);
+            if (existing.rows.length) continue;
             await recordRepositoryAccess(scoped, { principalId, provider: "local", externalRepositoryId: repository.id, canRead: true });
           }
         }

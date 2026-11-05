@@ -12,14 +12,14 @@ export const SYSTEM_CHAIN_ID = "00000000-0000-0000-0000-000000000000";
 const PAGE = 1000;
 const MAX_PROBLEMS = 20;
 
-// These expressions mirror migrations/012_ledger.sql on purpose. Verification recomputes payloads from the
+// These expressions mirror migrations 012 and 020 on purpose. Verification recomputes payloads from the
 // source rows with SQL owned by this file instead of trusting functions stored in the database.
 const utc = (column: string) => `to_char(${column} AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"')`;
 const AUDIT_PAYLOAD_SQL = `jsonb_build_array('audit_event', e.id, ${utc("e.occurred_at")}, e.actor_id, e.action,
   e.organization_id, e.project_id, e.target_type, e.target_id, e.reason, e.details)::text`;
 const RETRIEVAL_PAYLOAD_SQL = `jsonb_build_array('retrieval', r.id, r.project_id, r.caller_id, r.search_terms, r.outcome,
   ${utc("r.retrieved_at")}, r.applicability,
-  COALESCE((SELECT jsonb_agg(jsonb_build_array(ri.position, ri.memory_id, ri.revision, ri.status) ORDER BY ri.position)
+  COALESCE((SELECT jsonb_agg(jsonb_build_array(ri.position, ri.memory_id, ri.revision, ri.status) || CASE WHEN NOT ri.generation_sealed OR ri.status_generation IS NULL THEN '[]'::jsonb ELSE jsonb_build_array(ri.status_generation) END ORDER BY ri.position)
             FROM retrieval_items ri WHERE ri.retrieval_id = r.id), '[]'::jsonb))::text`;
 const AUDIT_CHAIN_SQL = `COALESCE(e.organization_id, (SELECT organization_id FROM projects WHERE id = e.project_id), '${SYSTEM_CHAIN_ID}'::uuid)`;
 

@@ -9,6 +9,7 @@ The MCP server is a separate stdio process (`src/scripts/mcp.ts`). It never open
 | Tool | Binding capability | What it does | Recorded |
 | --- | --- | --- | --- |
 | `get_task_context` | `context` | Recommended before editing. Takes the task and the files to be touched; returns approved, current decisions that govern those paths or match the task, plus the decisions they depend on, refine or conflict with, within a token budget. | Retrieval receipt with every delivered version |
+| `revalidate_context` | `context` | Recheck an earlier delivery by retrieval ID against current authority in the same binding scope. | CURRENT, STALE or UNKNOWN for the delivered items, or a tool error |
 | `get_context` | `context` | Keyword search of approved, current decisions (contract v1, kept unchanged for earlier evaluations). | Retrieval receipt |
 | `propose_memory` | `propose` | Submits a decision, constraint, lesson, rationale, failed approach or incident for human review, with existing source IDs or pull request evidence; optionally governed paths, links, or a change to an existing decision. | Proposal, sources, audit event |
 | `report_outdated` | `report` | Flags an approved decision in scope as possibly wrong or stale, with a reason. | Report, audit event |
@@ -70,4 +71,4 @@ looks outdated, call report_outdated with the reason.
 
 ## Contracts
 
-Executable schemas live in `src/agent-context/contract.ts`; JSON Schema exports are in [`docs/contracts/`](contracts/) and are checked by tests (`npm run contract:export` regenerates them). The v1 `get_context` query and response schemas are unchanged. The [v1 context contract](agent-context.md) covers the loopback bridge and backward-compatible query interface.
+Executable schemas live in `src/agent-context/contract.ts`; JSON Schema exports are in [`docs/contracts/`](contracts/) and are checked by tests (`npm run contract:export` regenerates them). The v1 query remains unchanged. The response scope accepts numeric GitHub IDs and namespaced local IDs. The [v1 context contract](agent-context.md) covers the loopback bridge and backward-compatible query interface.

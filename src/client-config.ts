@@ -59,6 +59,13 @@ function tomlString(value: string): string {
   return JSON.stringify(value);
 }
 
+/** A single process-scoped Codex -c value for clients that do not load the project's TOML layer. */
+export function codexSessionOption(entry: McpServerEntry): string {
+  const args = entry.args.map(tomlString).join(", ");
+  const env = Object.entries(entry.env).map(([key, value]) => `${key} = ${tomlString(value)}`).join(", ");
+  return `mcp_servers.memorynet={ command = ${tomlString(entry.command)}, args = [${args}], env = { ${env} } }`;
+}
+
 /** What would be written for one client, as file text, given the file's current text (or null). */
 export function renderClientConfig(client: McpClient, entry: McpServerEntry, current: string | null): string {
   if (client === "codex") {

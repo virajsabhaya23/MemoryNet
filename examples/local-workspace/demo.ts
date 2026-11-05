@@ -131,13 +131,21 @@ try {
   });
   const denied = await onApp("unrelated", beta, c => c.callTool({ name: "get_context", arguments: { query: "isolated" } }), alpha.bindingFile);
   assert.equal(denied.isError, true); assert.ok(!JSON.stringify(denied).includes("9 retries"));
-  const nextHead = await commitDoc("consumer", newPolicy);
-  await publish(alpha, await importDoc(a, nextHead), newPolicy, first.id);
+  const upstreamDir = join(root, "upstream");
+  await mkdir(upstreamDir); await git(upstreamDir, "init", "--template=", "-q", "-b", "main");
+  const nextHead = await commitDoc("upstream", newPolicy);
+  const origin = (JSON.parse(await run("preview")).repositories as LocalRepository[]).find(r => r.project === "upstream")!;
+  const args = ["import", "--fixture", "--at", nextHead, "--project", a.project, "--document", doc, "--from", "upstream"];
+  await assert.rejects(run(...args));
+  const imported = await run(...args, "--share-public-source");
+  const upstreamSource = /^Evidence ([a-f0-9-]{36})/m.exec(imported)?.[1]; assert.ok(upstreamSource);
+  await publish(alpha, upstreamSource, newPolicy, first.id);
   const changed = await onApp("consumer", alpha, async c => {
     const stale = await check(c, initial.result.retrievalId); assert.equal(stale.status, "STALE");
     assert.equal(stale.items[0]?.pinnedRevision, 1); assert.equal(stale.items[0]?.observedRevision, 2);
     const fresh = await fetchContext(c, "retry limits");
     assert.deepEqual(fresh.current.map(i => i.content), [newPolicy]); assert.equal(fresh.current[0]?.citations[0]?.revision, nextHead);
+    assert.equal(fresh.scope.repositoryId, a.id); assert.ok(fresh.current[0]?.citations[0]?.url.startsWith(`memorynet-local://${origin.id}/`));
     return { stale, fresh };
   });
   const db = await openDatabase(alpha.dataDir);

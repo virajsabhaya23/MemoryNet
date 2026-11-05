@@ -12,7 +12,7 @@ export type ContentFlag = (typeof CONTENT_FLAGS)[number];
 /** Stands in for each likely secret removed from automatically captured text. */
 export const SECRET_PLACEHOLDER = "[secret removed]";
 
-// Generic formats only: provider token formats wait for owner-approved references.
+// Bounded credential families also checked by the public release exporter.
 // Quantifiers are bounded so long input stays fast. Group 1 is kept when a secret is removed.
 const SECRET_PATTERNS: ReadonlyArray<{ label: string; pattern: RegExp }> = [
   {
@@ -24,6 +24,7 @@ const SECRET_PATTERNS: ReadonlyArray<{ label: string; pattern: RegExp }> = [
     label: "web token",
     pattern: /()\beyJ[\w-]{8,4096}\.eyJ[\w-]{8,4096}\.[\w-]{8,4096}/g,
   },
+  { label: "provider credential", pattern: /()\b(?:gh[pousr]_[A-Za-z0-9]{30,255}|github_pat_[A-Za-z0-9_]{40,255}|sk-(?:proj-|ant-)?[A-Za-z0-9_-]{32,255})\b/g },
   { label: "bearer token", pattern: /\b(Bearer\s{1,5})[\w.~+/-]{16,4096}=*/g },
   {
     label: "password in a link",

@@ -29,6 +29,7 @@ try {
     throw new Error("Pass --project-dir <your checkout> so the client configuration is written into your repository, not MemoryNet's.");
   }
   const repoId = flags.value("repo-id");
+  if (repoId && !/^[1-9][0-9]{0,18}$/.test(repoId)) throw new Error("--repo-id requires a numeric GitHub ID");
   const repository = repoId
     ? { fullName, id: repoId, defaultBranch: flags.value("branch") ?? "main", private: false }
     : lookupRepository(fullName);

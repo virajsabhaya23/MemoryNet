@@ -49,3 +49,41 @@ For coding-agent retrieval, use the [MCP setup and API contract](agent-context.m
 ## Stop and preserve data
 
 Stop the app with Ctrl+C. Restart it with the same command to reopen the workspace. Use a new database directory to repeat the walkthrough independently. See [local operations](local-operations.md) for backup, restore, locking, and permanent reset.
+
+## Select a local Git workspace
+
+Run these commands from the MemoryNet checkout. Start with public or disposable synthetic repositories on a trusted machine. If you want an automatic walkthrough first, run `npm run demo:workspace`.
+
+```sh
+npm run workspace -- preview --root /path/to/projects
+npm run workspace -- register --root /path/to/projects --project consumer --at PREVIEW_COMMIT --fixture
+npm run workspace -- import --root /path/to/projects --project consumer --at PREVIEW_COMMIT --document docs/adr/retries.md --fixture
+npm run workspace -- start --root /path/to/projects --project consumer --sandbox
+```
+
+Use the exact project path, commit and document printed by preview. The preview lists filenames and the origin host or a redacted presence indicator. It reads committed Git trees. Uncommitted edits do not enter a citation. Registration is idempotent for the same checkout and branch. Run register for each selected project. Each receives its own database, reader identity and read-only credential. Use an optional `--port 3051` at first registration to run a second project simultaneously. Status shows the chosen port.
+
+Open the loopback URL printed at startup. In the synthetic sandbox choose **Fixture operator**, open the project, create a proposal, choose the imported source and set the target repository, exact branch and active validity interval. Switch to **Fixture reviewer** to approve the displayed version. Those personas simulate separate principals on one machine. Starting without `--sandbox` uses the fixed local operator. Stop the app before importing new evidence. A new file revision becomes evidence and requires another reviewed proposal to change a decision.
+
+For a public upstream specification, select the consumer as the target and the dependency as the origin. Supply the upstream commit. Review this access decision before running the command. It connects the upstream checkout as an evidence source in the consumer database and declares read access for that fixture's operator, reviewers and agent. The decision still needs explicit consumer applicability. Revocation in a different isolated database is independent. A retry preserves withdrawals in the target database. Upstream access declarations can expire after 30 days and then fail closed.
+
+```sh
+npm run workspace -- import --root /path/to/projects --project consumer --from upstream --at UPSTREAM_COMMIT --document docs/adr/retries.md --fixture --share-public-source
+npm run workspace -- status --root /path/to/projects --project consumer
+npm run --silent workspace -- connect --root /path/to/projects --project consumer --client codex
+```
+
+The last command prints the client configuration. Add its named table to the trusted consumer project's local Codex config, or select `vscode` or `cursor` for their configuration format. The snippet contains local paths. The bearer token stays in its owner-only binding file. Keep the app running for the selected project. Restart that project's app near expiry, then reload the client's MCP server. If the checkout switches branches, select the new branch explicitly. The old binding continues to mean its original branch until expiry or removal. Moving or recreating the checkout gets a new local identity.
+
+For an installed Codex CLI that does not pick up project TOML, use its process-scoped `-c` option. Keep the app running. From the MemoryNet checkout, run:
+
+```sh
+option=$(npm run --silent workspace -- connect --root /path/to/projects --project consumer --client codex --session-option)
+codex -c "$option" mcp get memorynet
+```
+
+Launch Codex for the consumer with that same `-c "$option"` option when you intend to run a coding session. The inventory command above makes no model request. The installed Codex app server recognized the binding path and advertised all three read-only tools with an explicit override.
+
+Ask the agent to call `get_task_context` before changing code and save the returned `retrievalId`. Before finishing, call `revalidate_context` with that ID. A stale result identifies the pinned and observed revision and gives the reasons. Fetch fresh guidance and review the actual changes. An empty receipt or one created before lifecycle generations were recorded can return UNKNOWN. An error or denial is a failed check. CURRENT covers the delivered decisions only. Newly relevant decisions require a fresh query. **Affected work** separately lists tasks with explicitly declared pins and can refuse their stale exports.
+
+Discovery stops at checkout boundaries, depth three, 32 candidates, 4,096 workspace entries and 20,000 inspected Git entries. It supports regular SHA-1 checkouts with a committed named branch, loose or packed objects, root README/README.md and AGENTS.md, and Markdown directly in docs/adr, docs/decisions and docs/specs. Only the selected blob is imported, up to 64 KiB, with a 4,000-character excerpt and the SHA-256 of the full committed bytes. Its citation identifies the origin checkout, path and commit without disclosing its absolute path. Dot directories, common build, dependency and secret directories, links, worktree pointers, bare/alternate stores and detached heads are excluded or reported as unsupported.

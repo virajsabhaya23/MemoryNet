@@ -4,7 +4,7 @@ This document describes the backward-compatible `get_context` tool. For task-awa
 
 ## Query and response
 
-`src/agent-context/service.ts` exports `getAgentContext(ctx,binding,input)`. The v1 operator binding contains schema version 1, an independent 64-hex-character token, agent principal ID, project UUID, numeric GitHub repository ID, exact branch and expiry. A binding grants no database roles or repository access.
+`src/agent-context/service.ts` exports `getAgentContext(ctx,binding,input)`. The v1 operator binding contains schema version 1, an independent 64-hex-character token, agent principal ID, project UUID, numeric GitHub or namespaced local repository ID, exact branch and expiry. A binding grants no database roles or repository access.
 
 Client input is only `{query:string,limit?:number}`. Query text must be nonempty after trimming and at most 200 UTF-16 code units. Limit is an integer from 1 to 20, default 8. Unknown fields are rejected, including caller identity, project, repository, branch, historical time and approval parameters. Authority comes from the operator binding.
 
@@ -22,7 +22,7 @@ Structural schemas are checked into `docs/contracts/agent-query-v1.schema.json` 
 
 ## MCP and authenticated loopback bridge
 
-`src/mcp/server.ts` exports `createMemoryNetMcpServer(tools)` and still accepts a lone read function. It advertises only tools allowed by the binding: `get_context` and `get_task_context` for context access, plus `propose_memory` and `report_outdated` when a v2 binding grants those capabilities. The SDK handles stdio framing and negotiation. Only protocol messages go to stdout. Tool failures set `isError:true`; they are distinct from successful empty results. Agent writes create pending proposals or reports only. There are no approval, administration, shell, SQL or model tools.
+`src/mcp/server.ts` exports `createMemoryNetMcpServer(tools)` and still accepts a lone read function. It advertises only tools allowed by the binding: `get_context`, `get_task_context` and `revalidate_context` for context access, plus `propose_memory` and `report_outdated` when a v2 binding grants those capabilities. The SDK handles stdio framing and negotiation. Only protocol messages go to stdout. Tool failures set `isError:true`; they are distinct from successful empty results. Agent writes create pending proposals or reports only. There are no approval, administration, shell, SQL or model tools.
 
 The stdio process calls `POST /api/agent/context` in the running app rather than opening PGlite. This is a private loopback JSON bridge. Only one process may own the app database.
 

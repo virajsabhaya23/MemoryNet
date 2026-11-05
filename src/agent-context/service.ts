@@ -199,7 +199,7 @@ export async function revalidateAgentReceipt(ctx: MemoryNetContext, rawBinding: 
       [id, caller.id, binding.projectId, binding.repositoryId, binding.branch])).rows[0];
     if (!receipt) throw refuse();
     const pins = (await tx.query<{ memory_id: string; revision: number; status_generation: number | null; denied: boolean }>(
-      `SELECT ri.memory_id, ri.revision, ri.status_generation, EXISTS (
+      `SELECT ri.memory_id, ri.revision, CASE WHEN ri.generation_sealed THEN ri.status_generation END AS status_generation, EXISTS (
         SELECT 1 FROM memory_evidence me WHERE me.memory_id=ri.memory_id AND me.revision=ri.revision
         AND NOT EXISTS (SELECT 1 FROM source_read_access a WHERE a.source_id=me.source_id
           AND a.principal_id=$2 AND a.access_observed_at >= $3)) AS denied

@@ -51,6 +51,9 @@ test("edits, deletions and unchained inserts made around the triggers are detect
   assert.equal(search.outcome, "results");
   await env.db.exec("ALTER TABLE audit_events DISABLE TRIGGER USER; ALTER TABLE retrieval_items DISABLE TRIGGER USER");
   try {
+    await env.db.query("UPDATE retrieval_items SET status_generation=status_generation+1 WHERE retrieval_id=$1", [search.retrievalId]);
+    const { chain: changed } = await chainOf(w.orgA.id);
+    assert.ok(changed.problems.some(p => p.includes(`retrieval ${search.retrievalId}`) && p.includes("was changed")));
     const target = (await env.db.query<{ id: string }>("SELECT id::text FROM audit_events WHERE organization_id=$1 ORDER BY id LIMIT 1", [w.orgA.id])).rows[0]!.id;
     await env.db.query("UPDATE audit_events SET reason='rewritten history' WHERE id=$1", [target]);
     await env.db.query("DELETE FROM retrieval_items WHERE retrieval_id=$1", [search.retrievalId]);

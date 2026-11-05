@@ -145,7 +145,7 @@ export function applicabilityView(value: DecisionApplicability | null | undefine
   const until = value.validUntil ? utc(value.validUntil) : null;
   const outside = now && (now.getTime() < Date.parse(from) || (until !== null && now.getTime() >= Date.parse(until)));
   return html`<section><h2>${proposed ? "Proposed applicability" : "Reviewed applicability"}</h2>
-    <dl class="facts"><dt>${value.repositoryId.startsWith("local-") ? "Local repository ID" : "GitHub repository ID"}</dt><dd><code>${value.repositoryId}</code></dd>
+    <dl class="facts"><dt>Repository ID</dt><dd><code>${value.repositoryId}</code></dd>
       <dt>Exact branch</dt><dd><code>${value.branch}</code></dd>
       <dt>Valid from (inclusive)</dt><dd><code>${from}</code></dd>
       <dt>Valid until (exclusive)</dt><dd>${until ? html`<code>${until}</code>` : "No end date"}</dd></dl>
