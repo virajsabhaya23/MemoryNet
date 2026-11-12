@@ -9,8 +9,8 @@ export const MCP_CLIENTS = ["vscode", "claude", "cursor", "codex"] as const;
 export type McpClient = (typeof MCP_CLIENTS)[number];
 
 export const CLIENT_LABELS: Readonly<Record<McpClient, string>> = {
-  vscode: "VS Code (GitHub Copilot)",
-  claude: "Claude Code (and the portable Copilot .mcp.json)",
+  vscode: "VS Code",
+  claude: "Claude Code",
   cursor: "Cursor",
   codex: "OpenAI Codex (trusted projects)",
 };

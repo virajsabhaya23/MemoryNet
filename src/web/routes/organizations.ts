@@ -55,7 +55,7 @@ import {
 } from "../views.ts";
 import { definitionsSummary } from "./definitions.ts";
 import { brainSection } from "./brain.ts";
-import { analyzeBrainHealth, listBrainActivity } from "../../brain.ts";
+import { analyzeBrainHealth, listBrainActivity, type BrainFindingKind } from "../../brain.ts";
 import { integrityLink, policySection } from "./governance.ts";
 import {
   exportForm,
@@ -218,6 +218,17 @@ function monogram(name: string): string {
     .slice(0, 2);
 }
 
+/** Brain findings the Overview lists under Needs you, with their row label. Stale work and reviews have their own rows. */
+const NEEDS_YOU_BRAIN: Readonly<Partial<Record<BrainFindingKind, string>>> = {
+  warning_nodes: "Brain health",
+  flagged_nodes: "Brain health",
+  uncited_sources: "Brain health",
+  outdated_definitions: "Brain recommendation",
+  recurring_reports: "Brain recommendation",
+  rejected_agent_attempts: "Brain recommendation",
+  conflicting_decisions: "Brain recommendation",
+};
+
 async function home(rc: RequestContext): Promise<WebResponse> {
   if (!rc.user) return signInPicker(rc);
   const user = rc.user;
@@ -298,11 +309,12 @@ async function home(rc: RequestContext): Promise<WebResponse> {
   for (const organization of organizations) {
     const brain = await analyzeBrainHealth(rc.ctx, user.id, { organizationId: organization.id }).catch(() => []);
     for (const finding of brain) {
-      if (finding.kind !== "warning_nodes" && finding.kind !== "flagged_nodes" && finding.kind !== "uncited_sources") continue;
+      const meta = NEEDS_YOU_BRAIN[finding.kind];
+      if (meta === undefined) continue;
       needsYou.push(ledgerRow({
         href: finding.href,
         title: finding.label,
-        meta: "Brain health",
+        meta,
         trailing: html`<span class="badge" data-kind="guidance">Brain</span>`,
       }));
     }
@@ -678,6 +690,8 @@ async function projectPage(rc: RequestContext): Promise<WebResponse> {
       ${rc.decisionGuardAvailable && user.kind === "human" && canPropose
         ? html`<p><a class="button" href="/projects/${project.id}/decision-guard">Decision Guard: suggest decisions with Meta</a></p>`
         : ""}
+      <div class="workspace-columns">
+      <div class="workspace-main">
       ${searchSection(project.id)}
       ${await memoriesSection(
         rc,
@@ -687,7 +701,6 @@ async function projectPage(rc: RequestContext): Promise<WebResponse> {
         undefined,
         "current-knowledge",
       )}
-      ${await definitionsSummary(rc, scope, view.tree.organization.id)}
       ${await brainSection(rc, project.id, view.tree.organization.id, canPropose)}
       ${user.kind === "human" && canPropose
         ? await proposalsSection(rc, project.id)
@@ -713,11 +726,16 @@ async function projectPage(rc: RequestContext): Promise<WebResponse> {
       ${sourcesSection(sources)}
       ${canPropose ? await recordSourceSection(rc, project.id) : ""}
       ${canPropose ? await proposeSection(rc, project.id, sources) : ""}
-      ${isAdmin ? exportForm(rc, scope) : ""}
-      ${await policySection(rc, project.id, project.role)}
       ${connections ? repositoriesSection(rc, project.id, connections) : ""}
+      </div>
+      <aside class="workspace-side" aria-label="Guidance, policy and people">
+      ${await definitionsSummary(rc, scope, view.tree.organization.id)}
+      ${await policySection(rc, project.id, project.role)}
+      ${isAdmin ? exportForm(rc, scope) : ""}
       ${await membersSection(rc, scope, project.role)}
-      ${ownRoleSection(rc, scope, own)}`,
+      ${ownRoleSection(rc, scope, own)}
+      </aside>
+      </div>`,
   });
 }
 

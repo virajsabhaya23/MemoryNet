@@ -58,7 +58,7 @@ test("contributors describe an agent's responsibilities; readers and agents see 
     boundaries: "Approving refunds",
     appliesTo: "Refund code in checkout-service",
     instructions: "Start with the check skill.",
-    runsAs: await personId(env.db, "Copilot Agent"),
+    runsAs: await personId(env.db, "Coding Agent"),
     links: [`uses:${skill}`, `follows:${rule}`],
   });
   assert.equal(proposed.status, 303);
@@ -81,7 +81,7 @@ test("contributors describe an agent's responsibilities; readers and agents see 
     (await rudy.get(`/definition-proposals/${proposalId}`)).status,
     404,
   );
-  const agent = await as(app, env.db, "Copilot Agent");
+  const agent = await as(app, env.db, "Coding Agent");
   assert.equal(
     (await agent.get(`/definition-proposals/${proposalId}`)).status,
     404,
@@ -113,7 +113,7 @@ test("contributors describe an agent's responsibilities; readers and agents see 
   assert.equal(page.status, 200, "readers see approved definitions");
   assert.match(page.body, /Responsibilities/);
   assert.match(page.body, /Must never/);
-  assert.match(page.body, /Copilot Agent/);
+  assert.match(page.body, /Coding Agent/);
   assert.match(
     page.body,
     /Source: MemoryNet definition/,

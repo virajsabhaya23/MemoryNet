@@ -3,7 +3,10 @@ import { readFileSync } from "node:fs";
 import { findPrincipal } from "../access.ts";
 import { listReviewQueue } from "../knowledge.ts";
 import { listOrganizations } from "../organizations.ts";
-import { createAgentContextHandler, type AgentBindingLoader } from "../agent-context/http.ts";
+import {
+  createAgentContextHandler,
+  type AgentBindingLoader,
+} from "../agent-context/http.ts";
 import { AGENT_PATHS } from "../agent-context/contract.ts";
 import type { MemoryNetContext } from "../context.ts";
 import type { DecisionGuardWebRuntime } from "../decision-guard/runtime.ts";
@@ -21,7 +24,11 @@ import {
   type WebResponse,
 } from "./kit.ts";
 import type { CheckoutCatalog } from "../repository-checkouts.ts";
-import { createGitHubSignIn, GITHUB_REFRESH_MS, type GitHubSignInOptions } from "./github-sign-in.ts";
+import {
+  createGitHubSignIn,
+  GITHUB_REFRESH_MS,
+  type GitHubSignInOptions,
+} from "./github-sign-in.ts";
 import { repositoryRoutes } from "./routes/repository.ts";
 import { connectionsPage } from "./routes/connections.ts";
 import { captureRoutes } from "./routes/capture.ts";
@@ -56,7 +63,7 @@ export interface AppOptions {
   /** Fixed operator for a single-user localhost workspace; opens without a login screen. */
   localPrincipalId?: string;
   checkouts?: CheckoutCatalog;
-  prototype?: {principalId:string;login:string;accessKeyHash:string};
+  prototype?: { principalId: string; login: string; accessKeyHash: string };
   /** Optional account connection in local mode; verified sign-in in GitHub mode. */
   github?: GitHubSignInOptions;
   decisionGuard?: DecisionGuardWebRuntime;
@@ -72,22 +79,36 @@ const STATUS_BY_CODE: Readonly<Record<ErrorCode, number>> = {
   unavailable: 503,
 };
 
-const STYLESHEET = ["fonts.css", "cobalt-system.css"]
-  .map((name) => readFileSync(new URL(`./assets/${name}`, import.meta.url), "utf8"))
+const STYLESHEET = ["cobalt-system.css", "fonts.css"]
+  .map((name) =>
+    readFileSync(new URL(`./assets/${name}`, import.meta.url), "utf8"),
+  )
   .join("\n");
 
 const BRAND_MARK = readFileSync(
-  new URL("./assets/brand/mark.svg", import.meta.url), "utf8",
+  new URL("./assets/brand/mark.svg", import.meta.url),
+  "utf8",
 );
 const ICON = readFileSync(
-  new URL("./assets/brand/icon.svg", import.meta.url), "utf8",
+  new URL("./assets/brand/icon.svg", import.meta.url),
+  "utf8",
 );
-const FONTS = new Map([
-  "geist-variable.woff2", "familjen-grotesk-latin-variable.woff2",
-  "ibm-plex-sans-latin-variable.woff2", "jetbrains-mono-latin-variable.woff2",
-].map(name => [`/assets/fonts/${name}`, readFileSync(new URL(`./assets/fonts/${name}`, import.meta.url))]));
+const FONTS = new Map(
+  [
+    "host-grotesk-latin-variable.woff2",
+    "atkinson-hyperlegible-mono-latin-variable.woff2",
+    "geist-variable.woff2",
+    "familjen-grotesk-latin-variable.woff2",
+    "ibm-plex-sans-latin-variable.woff2",
+    "jetbrains-mono-latin-variable.woff2",
+  ].map((name) => [
+    `/assets/fonts/${name}`,
+    readFileSync(new URL(`./assets/fonts/${name}`, import.meta.url)),
+  ]),
+);
 
-// Only the network and prompt anatomy pages load these; they read what the page embeds and fetch nothing.
+// Only the network and prompt anatomy pages load these; they read what the page embeds, and the
+// network page also re-reads its own permission-filtered payload while it is open.
 const SCRIPTS: ReadonlyMap<string, string> = new Map(
   [
     "shell.js",
@@ -180,39 +201,84 @@ export function createApp(ctx: MemoryNetContext, options: AppOptions): App {
   ]);
   const sessions = options.sessions ?? new SessionStore();
   const systemToken = randomBytes(32).toString("base64url");
-  let loginFailures = 0, failureWindow = Date.now();
-  if (options.localPrincipalId && options.prototype) throw new Error("Local access and access-key sign-in are separate modes");
-  if(options.prototype && !/^[a-f0-9]{64}$/.test(options.prototype.accessKeyHash)) throw new Error("Prototype authentication needs a valid access-key hash");
-  const agentContext = options.agentBinding ? createAgentContextHandler(ctx, options.agentBinding) : null;
-  const github = options.github ? createGitHubSignIn(ctx, sessions, systemToken, options.github, options.agentBinding, options.localPrincipalId) : null;
+  let loginFailures = 0,
+    failureWindow = Date.now();
+  if (options.localPrincipalId && options.prototype)
+    throw new Error("Local access and access-key sign-in are separate modes");
+  if (
+    options.prototype &&
+    !/^[a-f0-9]{64}$/.test(options.prototype.accessKeyHash)
+  )
+    throw new Error("Prototype authentication needs a valid access-key hash");
+  const agentContext = options.agentBinding
+    ? createAgentContextHandler(ctx, options.agentBinding)
+    : null;
+  const github = options.github
+    ? createGitHubSignIn(
+        ctx,
+        sessions,
+        systemToken,
+        options.github,
+        options.agentBinding,
+        options.localPrincipalId,
+      )
+    : null;
   const refreshMs = options.github?.refreshIntervalMs ?? GITHUB_REFRESH_MS;
-  if (github && refreshMs > 0) setInterval(() => void github.refresh(), refreshMs).unref();
+  if (github && refreshMs > 0)
+    setInterval(() => void github.refresh(), refreshMs).unref();
 
   async function signIn(rc: RequestContext): Promise<WebResponse> {
-    if (options.localPrincipalId) return errorPage(rc, 403, "This local workspace opens as its configured operator. No sign-in is needed.");
-    if (github) return errorPage(rc, 403, "This workspace uses GitHub sign-in.");
+    if (options.localPrincipalId)
+      return errorPage(
+        rc,
+        403,
+        "This local workspace opens as its configured operator. No sign-in is needed.",
+      );
+    if (github)
+      return errorPage(rc, 403, "This workspace uses GitHub sign-in.");
     let principal;
-    if(options.prototype){
-      if(Date.now()-failureWindow>60_000){loginFailures=0;failureWindow=Date.now();}
-      if(loginFailures>=5)return errorPage(rc,429,"Too many sign-in attempts. Try again in one minute.");
-      const supplied=rc.form.get("accessKey")??"";
-      const hash=createHash("sha256").update(supplied).digest("hex");
-      if(!sameToken(rc.form.get("_login"),systemToken)||!sameToken(hash,options.prototype.accessKeyHash)){
-        loginFailures++;return errorPage(rc,403,"The access key is not valid.");
+    if (options.prototype) {
+      if (Date.now() - failureWindow > 60_000) {
+        loginFailures = 0;
+        failureWindow = Date.now();
       }
-      principal=await findPrincipal(rc.ctx.db,options.prototype.principalId);
-      loginFailures=0;
-    }else{
-      principal=await findPrincipal(rc.ctx.db,rc.form.get("principalId")??"").catch(()=>null);
+      if (loginFailures >= 5)
+        return errorPage(
+          rc,
+          429,
+          "Too many sign-in attempts. Try again in one minute.",
+        );
+      const supplied = rc.form.get("accessKey") ?? "";
+      const hash = createHash("sha256").update(supplied).digest("hex");
+      if (
+        !sameToken(rc.form.get("_login"), systemToken) ||
+        !sameToken(hash, options.prototype.accessKeyHash)
+      ) {
+        loginFailures++;
+        return errorPage(rc, 403, "The access key is not valid.");
+      }
+      principal = await findPrincipal(rc.ctx.db, options.prototype.principalId);
+      loginFailures = 0;
+    } else {
+      principal = await findPrincipal(
+        rc.ctx.db,
+        rc.form.get("principalId") ?? "",
+      ).catch(() => null);
     }
-    if(!principal)throw new ValidationError("Choose a person or agent from the list");
+    if (!principal)
+      throw new ValidationError("Choose a person or agent from the list");
     if (rc.session) sessions.delete(rc.session.token);
     const session = sessions.create(principal.id);
     return withCookie(redirect("/", "signed-in"), sessionCookie(session.token));
   }
 
   async function signOut(rc: RequestContext): Promise<WebResponse> {
-    if (options.localPrincipalId) return errorPage(rc, 403, "Use Connections to disconnect GitHub. Local workspace access does not require sign-in.");
+    if (options.localPrincipalId)
+      return errorPage(
+        rc,
+        403,
+        "Use Connections to disconnect GitHub. Local workspace access does not require sign-in.",
+      );
     if (rc.session) sessions.delete(rc.session.token);
     return withCookie(redirect("/"), clearedSessionCookie());
   }
@@ -237,17 +303,53 @@ export function createApp(ctx: MemoryNetContext, options: AppOptions): App {
       access: "user",
       handle: signOut,
     },
-    ...(options.localPrincipalId ? [
-      { method: "GET", pattern: /^\/connections$/, access: "user", handle: connectionsPage },
-    ] satisfies Route[] : []),
-    ...(github && options.localPrincipalId ? [
-      { method: "POST", pattern: /^\/connections\/github$/, access: "user", handle: github.start },
-      { method: "GET", pattern: /^\/connections\/github$/, access: "user", handle: github.poll },
-      { method: "POST", pattern: /^\/connections\/github\/disconnect$/, access: "user", handle: github.disconnect },
-    ] satisfies Route[] : github ? [
-      { method: "POST", pattern: /^\/sign-in\/github$/, access: "public", handle: github.start },
-      { method: "GET", pattern: /^\/sign-in\/github$/, access: "public", handle: github.poll },
-    ] satisfies Route[] : []),
+    ...(options.localPrincipalId
+      ? ([
+          {
+            method: "GET",
+            pattern: /^\/connections$/,
+            access: "user",
+            handle: connectionsPage,
+          },
+        ] satisfies Route[])
+      : []),
+    ...(github && options.localPrincipalId
+      ? ([
+          {
+            method: "POST",
+            pattern: /^\/connections\/github$/,
+            access: "user",
+            handle: github.start,
+          },
+          {
+            method: "GET",
+            pattern: /^\/connections\/github$/,
+            access: "user",
+            handle: github.poll,
+          },
+          {
+            method: "POST",
+            pattern: /^\/connections\/github\/disconnect$/,
+            access: "user",
+            handle: github.disconnect,
+          },
+        ] satisfies Route[])
+      : github
+        ? ([
+            {
+              method: "POST",
+              pattern: /^\/sign-in\/github$/,
+              access: "public",
+              handle: github.start,
+            },
+            {
+              method: "GET",
+              pattern: /^\/sign-in\/github$/,
+              access: "public",
+              handle: github.poll,
+            },
+          ] satisfies Route[])
+        : []),
     {
       method: "POST",
       pattern: /^\/preferences\/theme$/,
@@ -268,8 +370,12 @@ export function createApp(ctx: MemoryNetContext, options: AppOptions): App {
     ...networkRoutes,
     ...systemRoutes,
     ...captureRoutes,
-    ...(options.decisionGuard ? createDecisionGuardRoutes(options.decisionGuard) : []),
-    ...(options.decisionGuard ? createBrainBriefRoutes(options.decisionGuard) : []),
+    ...(options.decisionGuard
+      ? createDecisionGuardRoutes(options.decisionGuard)
+      : []),
+    ...(options.decisionGuard
+      ? createBrainBriefRoutes(options.decisionGuard)
+      : []),
     ...brainCaptureRoutes,
   ];
 
@@ -300,7 +406,8 @@ export function createApp(ctx: MemoryNetContext, options: AppOptions): App {
       return plainText(421, "MemoryNet only answers on localhost.");
     }
     if (AGENT_PATHS.has(request.path)) {
-      if (!agentContext) return plainText(404, "Agent context is not configured.");
+      if (!agentContext)
+        return plainText(404, "Agent context is not configured.");
       return agentContext(request);
     }
     if (
@@ -320,10 +427,7 @@ export function createApp(ctx: MemoryNetContext, options: AppOptions): App {
         body: request.path === "/assets/brand/mark.svg" ? BRAND_MARK : ICON,
       };
     }
-    if (
-      request.method === "GET" &&
-      FONTS.has(request.path)
-    ) {
+    if (request.method === "GET" && FONTS.has(request.path)) {
       return {
         status: 200,
         headers: {
@@ -362,15 +466,27 @@ export function createApp(ctx: MemoryNetContext, options: AppOptions): App {
       readCookie(request.headers.cookie, SESSION_COOKIE),
     );
     // Ignore sessions from any other identity, including a previous sandbox session.
-    if (options.localPrincipalId && session?.principalId !== options.localPrincipalId) session = null;
-    const user = session || options.localPrincipalId
-      ? await findPrincipal(ctx.db, options.localPrincipalId ?? session!.principalId)
-      : null;
+    if (
+      options.localPrincipalId &&
+      session?.principalId !== options.localPrincipalId
+    )
+      session = null;
+    const user =
+      session || options.localPrincipalId
+        ? await findPrincipal(
+            ctx.db,
+            options.localPrincipalId ?? session!.principalId,
+          )
+        : null;
     if (options.localPrincipalId && (!user || user.kind !== "human")) {
-      return plainText(503, "The configured local operator is unavailable. Check the workspace configuration.");
+      return plainText(
+        503,
+        "The configured local operator is unavailable. Check the workspace configuration.",
+      );
     }
     // Bootstrap only on reads. Mutations still need an existing session and its CSRF token.
-    const newLocalSession = !!options.localPrincipalId && !session && request.method === "GET";
+    const newLocalSession =
+      !!options.localPrincipalId && !session && request.method === "GET";
     if (newLocalSession) session = sessions.create(options.localPrincipalId!);
     const rc: RequestContext = {
       ctx,
@@ -382,26 +498,47 @@ export function createApp(ctx: MemoryNetContext, options: AppOptions): App {
       systemToken,
       origin: `http://${host}`,
       decisionGuardAvailable: options.decisionGuard !== undefined,
-      checkouts:options.checkouts,
-      prototype:options.prototype?{principalId:options.prototype.principalId,login:options.prototype.login}:undefined,
+      checkouts: options.checkouts,
+      prototype: options.prototype
+        ? {
+            principalId: options.prototype.principalId,
+            login: options.prototype.login,
+          }
+        : undefined,
       github: github !== null,
       local: !!options.localPrincipalId,
     };
-    const respond = (response: WebResponse) => newLocalSession
-      ? withCookie(response, sessionCookie(session!.token)) : response;
-    if (user && request.method === "GET") {
+    const respond = (response: WebResponse) =>
+      newLocalSession
+        ? withCookie(response, sessionCookie(session!.token))
+        : response;
+    const found = match(routes, request);
+    if (user && request.method === "GET" && !found?.route.data) {
       try {
         rc.shell = {
-          reviewCount: user.kind === "human" ? (await listReviewQueue(ctx, user.id, { limit: 200 })).length : 0,
-          primaryOrganizationId: (await listOrganizations(ctx, user.id))[0]?.id ?? null,
+          reviewCount:
+            user.kind === "human"
+              ? (await listReviewQueue(ctx, user.id, { limit: 200 })).length
+              : 0,
+          primaryOrganizationId:
+            (await listOrganizations(ctx, user.id))[0]?.id ?? null,
         };
       } catch {
         rc.shell = undefined;
       }
     }
     try {
-      if((options.localPrincipalId || options.prototype || github) && /^\/system(?:\/|$)/.test(request.path)) return respond(errorPage(rc,404,"This test-only feature is disabled in this workspace."));
-      const found = match(routes, request);
+      if (
+        (options.localPrincipalId || options.prototype || github) &&
+        /^\/system(?:\/|$)/.test(request.path)
+      )
+        return respond(
+          errorPage(
+            rc,
+            404,
+            "This test-only feature is disabled in this workspace.",
+          ),
+        );
       if (!found)
         return respond(errorPage(rc, 404, "There is no page at this address."));
       if (request.method === "POST") {
@@ -416,7 +553,9 @@ export function createApp(ctx: MemoryNetContext, options: AppOptions): App {
       return respond(await found.route.handle({ ...rc, params: found.params }));
     } catch (error) {
       if (error instanceof MemoryNetError) {
-        return respond(errorPage(rc, STATUS_BY_CODE[error.code], error.message));
+        return respond(
+          errorPage(rc, STATUS_BY_CODE[error.code], error.message),
+        );
       }
       console.error(error);
       return errorPage(

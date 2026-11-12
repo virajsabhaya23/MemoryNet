@@ -396,6 +396,40 @@ export function attentionItems(nodes, clusters) {
   };
 }
 
+/**
+ * What a newer copy of the network changed, by id: records and groups that are new, gone, or
+ * different in any way. A connection that appears or goes marks both of its ends as changed.
+ */
+export function networkChanges(previous, next) {
+  const signed = (network) =>
+    new Map(
+      [...network.clusters, ...network.nodes].map((item) => [
+        item.id,
+        JSON.stringify(item),
+      ]),
+    );
+  const before = signed(previous);
+  const after = signed(next);
+  const added = [];
+  const removed = [];
+  const changed = new Set();
+  for (const [id, value] of after) {
+    if (!before.has(id)) added.push(id);
+    else if (before.get(id) !== value) changed.add(id);
+  }
+  for (const id of before.keys()) if (!after.has(id)) removed.push(id);
+  const touch = (edges, others) => {
+    for (const edge of edges) {
+      if (others.has(edge.id)) continue;
+      for (const id of [edge.from, edge.to])
+        if (before.has(id) && after.has(id)) changed.add(id);
+    }
+  };
+  touch(next.edges, new Set(previous.edges.map((edge) => edge.id)));
+  touch(previous.edges, new Set(next.edges.map((edge) => edge.id)));
+  return { added, removed, changed: [...changed] };
+}
+
 /** Ranks things for the search box: names that start with the words first, then any match. */
 export function searchItems(query, items, limit = 8) {
   const text = query.trim().toLowerCase();

@@ -50,7 +50,7 @@ test("the sign-in picker is a local stand-in that starts a fresh HttpOnly sessio
   assert.match(picker.body, /Choose who you are/);
   assert.match(picker.body, /Olivia Owner/);
   assert.match(picker.body, /owner of Acme \(synthetic\) \(organization\)/);
-  assert.match(picker.body, /Copilot Agent/);
+  assert.match(picker.body, /Coding Agent/);
   // Each person is a one-click card grouped by how wide their role is; no separate Continue step.
   const oliviaId = await personId(env.db, "Olivia Owner");
   assert.match(

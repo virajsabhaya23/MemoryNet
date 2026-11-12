@@ -131,7 +131,7 @@ test("an agent's prompt is put together in seven blocks from its own text and th
   );
   assert.match(
     role,
-    /You act through the agent account "Copilot Agent", which can read and propose, never approve\./,
+    /You act through the agent account "Coding Agent", which can read and propose, never approve\./,
   );
   assert.match(
     role,

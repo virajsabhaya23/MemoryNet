@@ -43,11 +43,12 @@ Identities in this workspace are local and unverified, and repository access is 
 1. Import public merged-PR evidence, record it manually, or let a coding agent propose a decision with pull request evidence through MCP. Optional model extraction suggests candidates.
 2. Propose guidance with citations and, for agent context, an exact repository, branch and validity interval. A proposal may also name the paths it governs (`src/api/**`) and link to decisions it depends on, refines or conflicts with.
 3. Have different authorized humans approve the exact proposal revision: one by default, up to three per project policy. Upstream PR merges, imported candidates and agents are never approval.
-4. Search approved records, or deliver bounded, permission-filtered context through MCP: `get_context` (keyword search) or `get_task_context`, which starts from the task and the files being changed and follows reviewed links to dependencies and conflicts within a token budget. Every delivery records a retrieval receipt.
+4. Search approved records, or deliver bounded, permission-filtered context through MCP: `get_context` (keyword search) or `get_task_context`, which starts from the task and the files being changed, follows reviewed links to dependencies and conflicts, and adds the reviewed rules, instructions and matching skills that apply to the project, all within a token budget. A definition whose based-on decision changed arrives flagged `reviewNeeded`. Every delivery, including each definition version, records a retrieval receipt.
 5. Pin active tasks and spec/file hashes to approved decision versions. Revalidate after a change; stale baselines cannot be exported until explicitly refreshed.
 6. Chain every audit event and retrieval receipt into a per-organization SHA-256 ledger; `npm run ledger:verify` detects edited, removed or inserted history, and checkpoints stored elsewhere detect a rewritten chain.
+7. Recommend changes without a model: definitions based on decisions that changed, decisions with repeated outdated reports, decisions agents keep proposing that reviewers reject, and current decisions linked as conflicting. Each recommendation links to existing pages and propose forms; a different person still approves. See [Brain recommendations](docs/usage.md#brain-recommendations).
 
-The app also has organization/project roles, decision history, a network view, agent/skill definitions, JSON knowledge export, and offline database backup/restore. It does not run agents, monitor GitHub continuously, automatically patch specs, send task notifications, or establish that code follows a decision. Git reconciliation checks declared file bytes only.
+The app also has organization/project roles, decision history, a network view, agent/skill definitions (delivered to agents in task context, flagged when the decisions they rely on change), JSON knowledge export, and offline database backup/restore. It does not run agents, monitor GitHub continuously, automatically patch specs, send task notifications, or establish that code follows a decision. Git reconciliation checks declared file bytes only.
 
 ## Start with an isolated example
 
@@ -123,6 +124,7 @@ Keep credentials, generated bindings, local databases, and exports out of commit
 | Verify code | `npm run check` (TypeScript and isolated Node tests) |
 | Verify audit and receipt history (app stopped) | `npm run ledger:verify` / `npm run ledger:checkpoint`; [trust model](docs/trust.md#verify-the-history-yourself) |
 | Check MCP lifecycle / changed decisions | `npm run eval:smoke` / `npm run eval:work` (synthetic; no provider calls) |
+| Compare what retrieval paths hand an agent | `npm run eval:brain` (synthetic, no model calls; not an effectiveness measure); [brain benchmark](docs/evaluation.md#brain-benchmark-what-each-retrieval-path-delivers) |
 | Back up / restore a stopped app | [Local operations](docs/local-operations.md); `db:backup` and `db:restore` |
 | Reconcile declared artifacts with a commit | [Affected work](docs/affected-work.md#check-committed-artifact-bytes-locally); `work:reconcile` |
 | Preview / validate the website | `npm run site:serve` / `npm run site:check`; [website guide](docs/github-pages.md) |

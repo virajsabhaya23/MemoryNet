@@ -64,6 +64,7 @@ export {
   type DefinitionVersion,
   type DefinitionView,
 } from "./definitions.ts";
+export { basedOnChanges, type BasedOnChange } from "./definition-freshness.ts";
 export {
   ConflictError,
   ForbiddenError,
@@ -178,8 +179,19 @@ export {
   type NotCurrentMatch,
   type RetrievalOutcome,
   type RetrievalRecord,
+  type RetrievedDefinition,
   type RetrievedItem,
 } from "./retrieval.ts";
+export {
+  getTaskContext,
+  TASK_CONTEXT_LIMITS,
+  type TaskContextDefinition,
+  type TaskContextDefinitionReason,
+  type TaskContextInput,
+  type TaskContextItem,
+  type TaskContextReason,
+  type TaskContextResponse,
+} from "./task-context.ts";
 export {
   AGENT_ROLES,
   MINIMUM_ROLE,
@@ -191,6 +203,7 @@ export {
 
 export { createWork, listWork, exportWork, closeWork, WorkInputSchema, type WorkInput, type WorkRecord, type WorkAssessment, type WorkIssue } from "./work.ts";
 export { analyzeBrainHealth, buildBriefInput, createBrainBrief, listBrainActivity, listBrainBriefs, type BrainActivityEvent, type BrainBrief, type BrainFinding, type BrainFindingKind } from "./brain.ts";
+export { listBrainRecommendations, type BrainRecommendation, type BrainRecommendationKind } from "./brain.ts";
 export {
   formatCheckpoint,
   GENESIS_HASH,

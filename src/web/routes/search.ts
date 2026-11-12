@@ -254,7 +254,7 @@ function returned(record: RetrievalRecord): SafeHtml {
   if (record.failed) {
     return html`${badge("failed", "danger")} nothing was searched`;
   }
-  if (record.items.length === 0) {
+  if (record.items.length === 0 && record.definitions.length === 0) {
     return html`<span class="muted">nothing you can read now</span>`;
   }
   return html`<ul class="plain">
@@ -264,6 +264,13 @@ function returned(record: RetrievalRecord): SafeHtml {
           <a href="/memories/${item.memoryId}">${item.title}</a>
           <small>version ${item.revision}</small>
           ${item.status === "approved" ? "" : memoryStatusBadge(item.status)}
+        </li>`,
+    )}
+    ${record.definitions.map(
+      (definition) =>
+        html`<li>
+          <a href="/definitions/${definition.definitionId}">${definition.name}</a>
+          <small>${definition.kind} version ${definition.revision}</small>
         </li>`,
     )}
   </ul>`;
@@ -287,7 +294,7 @@ async function logPage(rc: RequestContext): Promise<WebResponse> {
     body: html`<p class="hint">
         ${everyone ? "Everyone's searches" : "Your searches"} in this project,
         newest first, up to 200: who, when, the words searched, and each memory
-        version shown. Words are stored as the search reads them (word stems,
+        and definition version shown. Words are stored as the search reads them (word stems,
         without very common words), and not at all when the search may have held
         personal data. Memories you cannot read now are left out.
       </p>

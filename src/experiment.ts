@@ -4,7 +4,7 @@
 export const CONDITIONS = ["baseline", "memorynet"] as const;
 export type Condition = (typeof CONDITIONS)[number];
 
-/** evidence: recording pull requests. upkeep: suspending or replacing memories. baseline_setup: preparing the existing workflow, such as a Copilot Space. */
+/** evidence: recording pull requests. upkeep: suspending or replacing memories. baseline_setup: preparing the existing workflow, such as a shared knowledge space. */
 export const EFFORT_ACTIVITIES = [
   "evidence",
   "writing",

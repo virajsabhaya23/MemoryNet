@@ -5,6 +5,8 @@ import { ForbiddenError, NotFoundError, ValidationError } from "../errors.ts";
 import { decisionPinIssues } from "../work.ts";
 import { accessFreshSince, inTransaction } from "../context.ts";
 import { ReceiptQuerySchema, type ReceiptCheck } from "./contract.ts";
+import { basedOnChanges } from "../definition-freshness.ts";
+import { readableProjectDefinitions } from "../definitions.ts";
 import { findReadableMemory, requireDecisionApplicabilityAccess } from "../knowledge.ts";
 import { reportOutdated } from "../history.ts";
 import { getMemory, proposeChange, proposeMemory, recordSource } from "../knowledge.ts";
@@ -19,7 +21,7 @@ import {
   AgentQuerySchema,
   AgentReportReceiptSchema,
   AgentReportSchema,
-  AgentTaskContextSchema,
+  AgentTaskContextV3Schema,
   AgentTaskQuerySchema,
   type AgentContextResponse,
   type AgentProposalReceipt,
@@ -85,7 +87,7 @@ export async function getAgentTaskContext(ctx: MemoryNetContext, rawBinding: Age
     const caller = await requireAgent(tx, binding);
     const result = await getTaskContext(scoped, caller.id, { ...input.data, projectId: binding.projectId,
       applicability: { repositoryId: binding.repositoryId, branch: binding.branch } });
-    return withheldIfCredential(binding, AgentTaskContextSchema.parse({ schemaVersion: 2,
+    return withheldIfCredential(binding, AgentTaskContextV3Schema.parse({ schemaVersion: 3,
       scope: { projectId: binding.projectId, repositoryId: binding.repositoryId, branch: binding.branch },
       retrievalId: result.retrievalId, retrievedAt: result.retrievedAt.toISOString(), outcome: result.outcome,
       items: result.items.map((item) => ({
@@ -99,6 +101,14 @@ export async function getAgentTaskContext(ctx: MemoryNetContext, rawBinding: Age
       conflicts: result.conflicts, moreConflicts: result.moreConflicts,
       changedDependencies: result.changedDependencies, moreChangedDependencies: result.moreChangedDependencies,
       omitted: result.omitted, budget: result.budget,
+      // Never forward owners, flags, links to other definitions or internal role metadata.
+      definitions: result.definitions.map((d) => ({
+        definitionId: d.definitionId, revision: d.revision, kind: d.kind, name: d.name, purpose: d.purpose,
+        responsibilities: d.responsibilities, instructions: d.instructions, shortened: d.shortened, boundaries: d.boundaries,
+        appliesTo: d.appliesTo, scope: { level: d.scope.level, id: d.scope.id }, approvedBy: d.approvedBy,
+        approvedAt: d.approvedAt.toISOString(), compact: d.compact, reasons: d.reasons, basedOn: d.basedOn, reviewNeeded: d.reviewNeeded,
+      })),
+      moreDefinitions: result.moreDefinitions,
     }));
   });
 }
@@ -178,7 +188,7 @@ export async function reportAgentMemory(ctx: MemoryNetContext, rawBinding: Agent
   return AgentReportReceiptSchema.parse({ schemaVersion: 1, reportId: report.id, memoryId: report.memoryId, revision: report.revision, status: "open" });
 }
 
-/** Compare only the approved items actually delivered to this principal, project, repository and branch.
+/** Compare only the approved items and definitions actually delivered to this principal, project, repository and branch.
  * Fail closed for the entire receipt if either historical evidence or current authority is unreadable. */
 export async function revalidateAgentReceipt(ctx: MemoryNetContext, rawBinding: AgentBinding, input: unknown): Promise<ReceiptCheck> {
   const binding = authorize(ctx, rawBinding, "context", input);
@@ -194,7 +204,7 @@ export async function revalidateAgentReceipt(ctx: MemoryNetContext, rawBinding: 
       repositoryId: binding.repositoryId, branch: binding.branch, validFrom: now, validUntil: null,
     });
     const id = parsed.data.retrievalId;
-    const receipt = (await tx.query<{ outcome: string }>(`SELECT outcome FROM retrievals
+    const receipt = (await tx.query<{ outcome: string; retrieved_at: Date }>(`SELECT outcome, retrieved_at FROM retrievals
       WHERE id=$1 AND caller_id=$2 AND project_id=$3 AND applicability->>'repositoryId'=$4 AND applicability->>'branch'=$5`,
       [id, caller.id, binding.projectId, binding.repositoryId, binding.branch])).rows[0];
     if (!receipt) throw refuse();
@@ -222,6 +232,27 @@ export async function revalidateAgentReceipt(ctx: MemoryNetContext, rawBinding: 
       }
       items.push({ memoryId: memory.id, pinnedRevision: pin.revision, observedRevision: memory.revision, reasons, replacement });
     }
-    return { status: items.some(item => item.reasons.length) ? "STALE" : unknown ? "UNKNOWN" : "CURRENT", items };
+    const definitions: ReceiptCheck["definitions"] = [];
+    const delivered = (await tx.query<{ definition_id: string; revision: number }>(
+      "SELECT definition_id, revision FROM retrieval_definitions WHERE retrieval_id=$1 ORDER BY position", [id])).rows;
+    if (delivered.length) {
+      const current = await readableProjectDefinitions(tx, scoped, caller, binding.projectId);
+      const byId = new Map(current.definitions.map(definition => [definition.id, definition]));
+      const readable = new Map(current.linkedMemories.map(memory => [memory.id, memory]));
+      for (const pin of delivered) {
+        const definition = byId.get(pin.definition_id);
+        if (!definition) throw refuse();
+        const reasons: ReceiptCheck["definitions"][number]["reasons"] = [];
+        if (definition.revision !== pin.revision) reasons.push("revision_changed");
+        if (definition.status !== "active") reasons.push("retired");
+        // Only changes after delivery: a basis that had already changed was delivered marked reviewNeeded.
+        if (basedOnChanges(definition, readable).some(change => change.changedAt === null || change.changedAt.getTime() > receipt.retrieved_at.getTime())) {
+          reasons.push("basis_changed");
+        }
+        definitions.push({ definitionId: definition.id, pinnedRevision: pin.revision, observedRevision: definition.revision, reasons });
+      }
+    }
+    const stale = items.some(item => item.reasons.length) || definitions.some(definition => definition.reasons.length);
+    return { status: stale ? "STALE" : unknown ? "UNKNOWN" : "CURRENT", items, definitions };
   });
 }

@@ -36,6 +36,7 @@
         "eval:score": "node src/scripts/score-decision-lineage.ts",
         "eval:coding": "node src/scripts/coding-demo.ts",
         "eval:preregister": "node src/scripts/preregister.ts",
+        "eval:brain": "node src/scripts/brain-benchmark.ts",
         "demo:eslint": "node examples/eslint-demo/serve.ts",
         "release:export": "node src/scripts/export-release.ts",
         "site:check": "node src/scripts/site.ts check",

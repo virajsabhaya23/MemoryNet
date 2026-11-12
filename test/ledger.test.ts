@@ -3,6 +3,8 @@ import { randomUUID } from "node:crypto";
 import { readFile, readdir } from "node:fs/promises";
 import { test } from "node:test";
 import {
+  approveDefinitionProposal,
+  createContext,
   ForbiddenError,
   formatCheckpoint,
   getContext,
@@ -10,12 +12,15 @@ import {
   migrate,
   openDatabase,
   parseCheckpoint,
+  proposeDefinition,
   SYSTEM_CHAIN_ID,
   ValidationError,
   verifyLedger,
   verifyOrganizationLedger,
+  type Database,
 } from "../src/index.ts";
-import { buildWorld, useTestDatabase } from "./helpers.ts";
+import { getTaskContext } from "../src/task-context.ts";
+import { ACCESS_MAX_AGE_MS, buildWorld, START, useTestDatabase } from "./helpers.ts";
 
 const env = useTestDatabase();
 
@@ -24,6 +29,18 @@ async function chainOf(organizationId: string) {
   const chain = report.chains[0];
   assert.ok(chain, "organization chain exists");
   return { report, chain };
+}
+
+/** Applies the migrations whose number matches, in order, the way migrate() records them. */
+async function migrateOnly(db: Database, numbers: RegExp) {
+  const migrations = new URL("../migrations/", import.meta.url);
+  await db.exec("CREATE TABLE schema_migrations(name text PRIMARY KEY, applied_at timestamptz NOT NULL DEFAULT now())");
+  for (const name of (await readdir(migrations)).filter((file) => numbers.test(file)).sort()) {
+    await db.transaction(async (tx) => {
+      await tx.exec(await readFile(new URL(name, migrations), "utf8"));
+      await tx.query("INSERT INTO schema_migrations(name) VALUES($1)", [name]);
+    });
+  }
 }
 
 test("every audit event and retrieval receipt is chained per organization and verifies", async () => {
@@ -128,15 +145,8 @@ test("organization administrators verify only their own chain; readers and outsi
 
 test("012 chains records that existed before the upgrade, oldest first", async () => {
   const db = await openDatabase();
-  const migrations = new URL("../migrations/", import.meta.url);
   try {
-    await db.exec("CREATE TABLE schema_migrations(name text PRIMARY KEY, applied_at timestamptz NOT NULL DEFAULT now())");
-    for (const name of (await readdir(migrations)).filter((file) => /^0(0[1-9]|1[01])_.*\.sql$/.test(file)).sort()) {
-      await db.transaction(async (tx) => {
-        await tx.exec(await readFile(new URL(name, migrations), "utf8"));
-        await tx.query("INSERT INTO schema_migrations(name) VALUES($1)", [name]);
-      });
-    }
+    await migrateOnly(db, /^0(0[1-9]|1[01])_.*\.sql$/);
     const person = randomUUID(), org = randomUUID(), unit = randomUUID(), projectId = randomUUID(), retrieval = randomUUID();
     const at = new Date("2026-10-01T12:00:00.000Z");
     await db.query("INSERT INTO principals(id,kind,display_name,created_at) VALUES($1,'human','Upgrade owner',$2)", [person, at]);
@@ -149,6 +159,54 @@ test("012 chains records that existed before the upgrade, oldest first", async (
     assert.ok((await migrate(db)).includes("012_ledger.sql"));
     const entries = await db.query<{ seq: string; entry_type: string }>("SELECT seq::text, entry_type FROM ledger_entries WHERE chain_id=$1 ORDER BY seq", [org]);
     assert.deepEqual(entries.rows.map((row) => row.entry_type), ["audit_event", "retrieval", "audit_event"]);
+    const report = await verifyLedger(db);
+    assert.equal(report.ok, true, JSON.stringify(report));
+  } finally {
+    await db.close();
+  }
+});
+
+test("delivered definitions are chained with their receipt, sealed at commit, and changes to them are detected", async () => {
+  const w = await buildWorld(env.ctx);
+  const proposal = await proposeDefinition(env.ctx, w.people.ownerA.id, { scope: { level: "organization", id: w.orgA.id }, kind: "rule",
+    name: "No secrets in chat", purpose: "Synthetic purpose.", responsibilities: ["Synthetic duty"] });
+  const rule = await approveDefinitionProposal(env.ctx, w.people.adminA.id, { proposalId: proposal.id, expectedRevision: 1 });
+  const delivery = await getTaskContext(env.ctx, w.people.agent.id, { projectId: w.alpha.id, task: "queue retries" });
+  assert.deepEqual([delivery.items.length, delivery.definitions.map((d) => d.definitionId)], [1, [rule.id]]);
+  const payload = (await env.db.query<{ payload: string }>("SELECT ledger_retrieval_payload($1) AS payload", [delivery.retrievalId])).rows[0]!.payload;
+  assert.ok(payload.endsWith(`, {"definitions": [[1, "${rule.id}", 1]]}]`), payload);
+  assert.equal((await verifyLedger(env.db)).ok, true);
+  await assert.rejects(env.db.query("INSERT INTO retrieval_definitions (retrieval_id, position, definition_id, revision) VALUES ($1, 2, $2, 1)",
+    [delivery.retrievalId, rule.id]), /sealed/);
+  await assert.rejects(env.db.query("UPDATE retrieval_definitions SET revision = 1"), /append-only/);
+  await assert.rejects(env.db.query("DELETE FROM retrieval_definitions"), /append-only/);
+  await env.db.exec("ALTER TABLE retrieval_definitions DISABLE TRIGGER USER");
+  try {
+    await env.db.query("DELETE FROM retrieval_definitions WHERE retrieval_id = $1", [delivery.retrievalId]);
+    const { report, chain } = await chainOf(w.orgA.id);
+    assert.equal(report.ok, false);
+    assert.ok(chain.problems.some((p) => p.includes(`retrieval ${delivery.retrievalId}`) && p.includes("was changed")), chain.problems.join("\n"));
+  } finally {
+    await env.db.exec("ALTER TABLE retrieval_definitions ENABLE TRIGGER USER");
+  }
+});
+
+test("021 keeps the payload bytes of receipts without definitions, so chains recorded before it still verify", async () => {
+  const db = await openDatabase();
+  try {
+    await migrateOnly(db, /^0(0[1-9]|1[0-9]|20)_.*\.sql$/);
+    const ctx = createContext(db, { now: () => START, repositoryAccessMaxAgeMs: ACCESS_MAX_AGE_MS });
+    const w = await buildWorld(ctx);
+    const search = await getContext(ctx, w.people.reader.id, { projectId: w.alpha.id, query: "queue retries" });
+    const task = await getTaskContext(ctx, w.people.agent.id, { projectId: w.alpha.id, task: "queue retries" });
+    assert.ok(search.current.length > 0 && task.items.length > 0, "receipts with items");
+    const payloads = async () => (await db.query<{ id: string; payload: string; payload_hash: string }>(
+      `SELECT r.id, ledger_retrieval_payload(r.id) AS payload, le.payload_hash FROM retrievals r
+       JOIN ledger_entries le ON le.entry_type = 'retrieval' AND le.entry_ref = r.id::text ORDER BY r.id`)).rows;
+    const before = await payloads();
+    assert.equal(before.length, 2);
+    assert.deepEqual(await migrate(db), ["021_retrieval_definitions.sql"]);
+    assert.deepEqual(await payloads(), before, "the new payload function reproduces every earlier payload byte for byte");
     const report = await verifyLedger(db);
     assert.equal(report.ok, true, JSON.stringify(report));
   } finally {

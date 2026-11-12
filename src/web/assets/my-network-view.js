@@ -18,35 +18,35 @@ const TAU = Math.PI * 2;
 /** The viewer's own node, at the middle of the map. */
 export const YOU = "you";
 /** Your own roles: the bright lines straight from you, and you. */
-export const ACCENT = Object.freeze({ dark: "#8dbbff", light: "#0861cf" });
+export const ACCENT = Object.freeze({ dark: "#f7b83d", light: "#a15c00" });
 /** The canvas behind everything, the same as graph-engine.js draws, for dimming colours toward it. */
-const BACKDROP = { dark: "#111722", light: "#f7fafc" };
+const BACKDROP = { dark: "#0d1013", light: "#faf8f4" };
 
 /** Colours by kind, the same as on the full network map. Darker variants for the light theme. */
 export const PALETTE = Object.freeze({
   dark: Object.freeze({
-    organization: "#c6d6ee",
-    business_unit: "#acb7e7",
-    project: "#90b6ff",
-    rule: "#acb7e7",
-    instruction: "#b2bfdc",
-    skill: "#dbc186",
-    agent: "#9bbcdf",
-    memory: "#90b6ff",
-    source: "#8dbbff",
-    more: "#acbfd9",
+    organization: "#d3d8de",
+    business_unit: "#b8bec5",
+    project: "#9fa5ac",
+    rule: "#b2b8bf",
+    instruction: "#a5acb2",
+    skill: "#999fa6",
+    agent: "#bec5cc",
+    memory: "#eceff2",
+    source: "#6ebcfc",
+    more: "#9da2a8",
   }),
   light: Object.freeze({
-    organization: "#536c8e",
-    business_unit: "#5968a8",
-    project: "#215dc6",
-    rule: "#5968a8",
-    instruction: "#536c8e",
-    skill: "#896518",
-    agent: "#3d6a98",
-    memory: "#215dc6",
-    source: "#21766d",
-    more: "#536c8e",
+    organization: "#322d29",
+    business_unit: "#47413c",
+    project: "#5d5751",
+    rule: "#423c37",
+    instruction: "#4d4641",
+    skill: "#58514c",
+    agent: "#38322d",
+    memory: "#17130f",
+    source: "#116bb5",
+    more: "#5a544f",
   }),
 });
 /** Sizes as on the full network map; hubs grow a little with what they hold. */

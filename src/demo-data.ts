@@ -77,7 +77,7 @@ async function load(ctx: MemoryNetContext): Promise<ExampleDataSummary> {
   const glen = await person("Glen Globex", "910011");
   const agent = await createPrincipal(ctx, {
     kind: "agent",
-    displayName: "Copilot Agent",
+    displayName: "Coding Agent",
   });
 
   const grant = (by: Principal, who: Principal, at: ScopeRef, role: Role) =>

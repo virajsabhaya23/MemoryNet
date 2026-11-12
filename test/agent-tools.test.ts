@@ -7,6 +7,7 @@ import { fileURLToPath } from "node:url";
 import { test } from "node:test";
 import { Client } from "@modelcontextprotocol/client";
 import { StdioClientTransport } from "@modelcontextprotocol/client/stdio";
+import { z } from "zod";
 import {
   parseAgentBinding,
   readAgentBindingFile,
@@ -15,16 +16,23 @@ import {
   type AgentBinding,
 } from "../src/agent-context/binding.ts";
 import {
+  AGENT_BASIS_CHANGES,
   AGENT_CONTENT_FLAGS,
+  AGENT_DEFINITION_KINDS,
   AGENT_MEMORY_TYPES,
   AGENT_PROPOSALS_PATH,
   AGENT_RELATIONS,
   AGENT_REPORTS_PATH,
+  AGENT_SCOPE_LEVELS,
   AGENT_TASK_CONTEXT_PATH,
-  AgentTaskContextSchema,
+  AgentTaskContextV3Schema,
+  ReceiptCheckV2Schema,
 } from "../src/agent-context/contract.ts";
 import { CONTENT_FLAGS } from "../src/content-checks.ts";
-import { approveProposal, getProposal, listRetrievals, MEMORY_TYPES, proposeMemory, setProjectPolicy, ValidationError } from "../src/index.ts";
+import {
+  approveDefinitionProposal, approveProposal, DEFINITION_KINDS, getProposal, listRetrievals, MEMORY_STATUSES, MEMORY_TYPES, proposeDefinition, proposeMemory,
+  SCOPE_LEVELS, setProjectPolicy, TASK_CONTEXT_LIMITS, ValidationError,
+} from "../src/index.ts";
 import { MEMORY_RELATIONS } from "../src/relations.ts";
 import { createApp, type App } from "../src/web/app.ts";
 import { buildWorld, START, useTestDatabase, type World } from "./helpers.ts";
@@ -49,21 +57,38 @@ async function scopedDecision(w: World, title: string, content: string) {
   return approveProposal(env.ctx, w.people.reviewer.id, { proposalId: p.id, expectedRevision: 1 });
 }
 
+async function projectRule(w: World, name: string) {
+  const p = await proposeDefinition(env.ctx, w.people.contributor.id, { scope: { level: "project", id: w.alpha.id }, kind: "rule", name,
+    purpose: "Synthetic purpose.", responsibilities: ["Synthetic requirement"], instructions: "Synthetic rule text." });
+  return approveDefinitionProposal(env.ctx, w.people.reviewer.id, { proposalId: p.id, expectedRevision: 1 });
+}
+
 test("agent contract enums stay equal to the core definitions", () => {
   assert.deepEqual([...AGENT_MEMORY_TYPES], [...MEMORY_TYPES]);
   assert.deepEqual([...AGENT_RELATIONS], [...MEMORY_RELATIONS]);
   assert.deepEqual([...AGENT_CONTENT_FLAGS], [...CONTENT_FLAGS]);
+  assert.deepEqual([...AGENT_DEFINITION_KINDS], [...DEFINITION_KINDS]);
+  assert.deepEqual([...AGENT_SCOPE_LEVELS], [...SCOPE_LEVELS]);
+  assert.deepEqual([...AGENT_BASIS_CHANGES], ["revised", ...MEMORY_STATUSES.filter((status) => status !== "approved")]);
+  const maxDefinitions = (schema: z.ZodType) => (z.toJSONSchema(schema) as unknown as { properties: { definitions: { maxItems: number } } }).properties.definitions.maxItems;
+  assert.deepEqual([maxDefinitions(AgentTaskContextV3Schema), maxDefinitions(ReceiptCheckV2Schema)], [TASK_CONTEXT_LIMITS.definitions, TASK_CONTEXT_LIMITS.definitions]);
 });
 
 test("task context over HTTP is scoped by the binding and records a receipt", async () => {
   const w = await buildWorld(env.ctx);
   const decision = await scopedDecision(w, "Queue consumers acknowledge after commit", "Synthetic: acknowledge messages after the database commit.");
+  const rule = await projectRule(w, "Queue handlers are idempotent");
   const app = createApp(env.ctx, { port: 3050, agentBinding: async () => binding(w, ["context"]) });
   const reply = await post(app, AGENT_TASK_CONTEXT_PATH, { task: "change the queue consumer", paths: ["src/queue/consumer.ts"] });
   assert.equal(reply.status, 200);
-  const body = AgentTaskContextSchema.parse(JSON.parse(reply.body));
+  const body = AgentTaskContextV3Schema.parse(JSON.parse(reply.body));
+  assert.equal(body.schemaVersion, 3);
   assert.equal(body.items[0]?.memoryId, decision.id);
   assert.deepEqual(body.items[0]?.reasons.map((r) => r.kind).sort(), ["governs_path", "matched_task"]);
+  assert.deepEqual(body.definitions.map((d) => [d.definitionId, d.reasons, d.scope, d.reviewNeeded]),
+    [[rule.id, [{ kind: "applies_to_scope" }, { kind: "matched_task" }, { kind: "matched_path", path: "src/queue/consumer.ts", pattern: null }],
+      { level: "project", id: w.alpha.id }, false]]);
+  assert.equal(body.moreDefinitions, 0);
   assert.ok((await listRetrievals(env.ctx, w.people.adminA.id, { projectId: w.alpha.id })).some((r) => r.id === body.retrievalId));
   for (const [input, status] of [[{ task: "x", projectId: w.beta.id }, 400], [{ task: "x", branch: "release" }, 400], [{ task: "" }, 400], [{ task: "the" }, 400]] as const) {
     assert.equal((await post(app, AGENT_TASK_CONTEXT_PATH, input)).status, status, JSON.stringify(input));
@@ -167,6 +192,7 @@ test("v2 bindings declare capabilities and an accountable owner; rotation keeps 
 test("a fresh MCP SDK client gets only the tools its binding allows and can propose and read through stdio", { timeout: 60_000 }, async () => {
   const w = await buildWorld(env.ctx);
   await scopedDecision(w, "Queue consumers acknowledge after commit", "Synthetic: acknowledge after commit.");
+  const rule = await projectRule(w, "Queue handlers are idempotent");
   const folder = await mkdtemp(join(tmpdir(), "memorynet-mcp-tools-"));
   const file = join(folder, "binding.json");
   let app: App | undefined;
@@ -191,9 +217,16 @@ test("a fresh MCP SDK client gets only the tools its binding allows and can prop
       env: { MEMORYNET_AGENT_BINDING_FILE: file, MEMORYNET_APP_URL: `http://127.0.0.1:${address.port}` }, stderr: "pipe" }));
     assert.deepEqual((await client.listTools()).tools.map((tool) => tool.name).sort(), ["get_context", "get_task_context", "propose_memory", "report_outdated", "revalidate_context"]);
     assert.match(client.getInstructions() ?? "", /get_task_context/);
+    assert.match(client.getInstructions() ?? "", /unless reviewNeeded is true/);
     const context = await client.callTool({ name: "get_task_context", arguments: { task: "queue consumer acknowledgement", paths: ["src/queue/a.ts"] } });
     assert.notEqual(context.isError, true);
-    assert.equal(AgentTaskContextSchema.parse(context.structuredContent).outcome, "results");
+    const delivered = AgentTaskContextV3Schema.parse(context.structuredContent);
+    assert.equal(delivered.outcome, "results");
+    assert.deepEqual(delivered.definitions.map((d) => d.definitionId), [rule.id]);
+    const recheck = await client.callTool({ name: "revalidate_context", arguments: { retrievalId: delivered.retrievalId } });
+    assert.notEqual(recheck.isError, true);
+    assert.deepEqual(ReceiptCheckV2Schema.parse(recheck.structuredContent).definitions,
+      [{ definitionId: rule.id, pinnedRevision: 1, observedRevision: 1, reasons: [] }]);
     const proposed = await client.callTool({ name: "propose_memory", arguments: { type: "lesson", title: "Duplicate deliveries happen in staging",
       content: "Synthetic lesson from the agent.", evidence: { sourceIds: [w.sources.alpha.id] } } });
     assert.notEqual(proposed.isError, true);

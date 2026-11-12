@@ -33,6 +33,7 @@ import {
   badge,
   html,
   ledgerRow,
+  metaLine,
   options,
   preview,
   recordHead,
@@ -647,7 +648,7 @@ async function reviewQueuePage(rc: RequestContext): Promise<WebResponse> {
                   return ledgerRow({
                     href: `/proposals/${proposal.id}`,
                     title: html`${proposal.title} ${flagBadges(proposal.flags)}`,
-                    meta: html`${projectName(proposal.projectId)} · version ${proposal.revision} · by ${nameOf(names, proposal.proposedBy)}${names.get(proposal.proposedBy)?.kind === "agent" ? html` ${badge("agent", "warn")}` : ""} · ${preview(proposal.content, 140)}`,
+                    meta: html`${projectName(proposal.projectId)} · version ${proposal.revision} · by ${nameOf(names, proposal.proposedBy)}${names.get(proposal.proposedBy)?.kind === "agent" ? html` ${badge("agent", "agent")}` : ""} · ${preview(proposal.content, 140)}`,
                     trailing: html`<span class="approval-progress">${count ? `${count.counting.length} of ${count.required}` : "0 of 1"}</span> ${batchable(proposal)
                       ? html`<input type="checkbox" name="approve" value="${proposal.id}:${proposal.revision}" aria-label="Select ${proposal.title}" />`
                       : html`<span class="muted" title="Flagged text or evidence, or already approved by you: review it on its own page">—</span>`}`,
@@ -656,7 +657,7 @@ async function reviewQueuePage(rc: RequestContext): Promise<WebResponse> {
               </ul>`}
           ${queue.some(batchable) ? html`<label class="choice"><input type="checkbox" name="confirm" value="yes" required />
               I read the text and evidence of each selected proposal and approve exactly the version shown.</label>
-            <button type="submit" class="key key-primary">Approve selected</button>
+            <button type="submit" class="key">Approve selected</button>
             <p class="hint">Each selection approves only the version listed, in its own step; a proposal that changed is refused.
               Proposals whose text or evidence is flagged must be reviewed on their own page. At most ${BATCH_LIMIT} at a time.</p>` : ""}
         </form>
@@ -675,12 +676,12 @@ async function reviewQueuePage(rc: RequestContext): Promise<WebResponse> {
       </section>
       <aside class="review-pane panel" aria-label="Reading pane">
         ${queue[0]
-          ? html`<p class="record-kind">Next up</p>
-              <p class="record-title">${queue[0].title}</p>
+          ? html`<h2>Next up</h2>
+              <p class="review-pane-title">${queue[0].title}</p>
               <p>${preview(queue[0].content, 280)}</p>
-              <p class="hint">${projectName(queue[0].projectId)} · version ${queue[0].revision} · proposed by ${nameOf(names, queue[0].proposedBy)} · since ${queue[0].proposedAt}</p>
+              <p class="hint">${metaLine(html`${projectName(queue[0].projectId)} · version ${queue[0].revision} · proposed by ${nameOf(names, queue[0].proposedBy)} · since ${queue[0].proposedAt}`)}</p>
               <p><a class="key key-primary" href="/proposals/${queue[0].id}">Read and decide</a></p>`
-          : html`<p class="record-kind">Reading pane</p><p>Nothing is waiting. When a proposal arrives, it opens here with its evidence and approval policy.</p>`}
+          : html`<h2>Reading pane</h2><p>Nothing is waiting. When a proposal arrives, it opens here with its evidence and approval policy.</p>`}
       </aside>
     </div>`,
   });

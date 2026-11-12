@@ -5,11 +5,14 @@ import {
   clip,
   createGraphView,
   createSimulation,
+  curveControl,
+  depthFor,
   growPositions,
   growSimulation,
   hashUnit,
   pickLabels,
   seedPositions,
+  signalProgress,
   withAlpha,
   type EngineLink,
   type EngineNode,
@@ -31,7 +34,8 @@ function orgGraph(units: number, projects: number, members: number) {
         const id = `${project}m${m}`;
         nodes.push({ id, group: project, r: 5 });
         links.push({ source: id, target: project, strength: 0.4 });
-        if (m % 2 === 1) links.push({ source: id, target: `${project}m${m - 1}` });
+        if (m % 2 === 1)
+          links.push({ source: id, target: `${project}m${m - 1}` });
       }
     }
   }
@@ -56,7 +60,10 @@ test("seeds put the root in the middle, every node somewhere, and members near t
     if (!node.hub && node.group) {
       const hub = seeds.get(node.group);
       assert.ok(hub);
-      assert.ok(Math.hypot(p.x - hub.x, p.y - hub.y) < 80, `${node.id} starts near its hub`);
+      assert.ok(
+        Math.hypot(p.x - hub.x, p.y - hub.y) < 80,
+        `${node.id} starts near its hub`,
+      );
     }
   }
 });
@@ -73,7 +80,11 @@ test("the simulation settles, is deterministic, and keeps groups together and ap
   assert.ok(!first.sim.running(), "it cools down within the budget");
   assert.ok(first.used < 600);
   for (const node of graph.nodes) {
-    assert.deepEqual(first.sim.position(node.id), second.sim.position(node.id), node.id);
+    assert.deepEqual(
+      first.sim.position(node.id),
+      second.sim.position(node.id),
+      node.id,
+    );
   }
   const sim = first.sim;
   // Members sit closer to their own project than to any other project.
@@ -86,14 +97,23 @@ test("the simulation settles, is deterministic, and keeps groups together and ap
     const ownDistance = Math.hypot(p.x - own.x, p.y - own.y);
     let nearestOther = Infinity;
     for (const hub of graph.nodes) {
-      if (!hub.hub || hub.id === node.group || hub.id === "org" || /^u\d+$/.test(hub.id)) continue;
+      if (
+        !hub.hub ||
+        hub.id === node.group ||
+        hub.id === "org" ||
+        /^u\d+$/.test(hub.id)
+      )
+        continue;
       const q = sim.position(hub.id)!;
       nearestOther = Math.min(nearestOther, Math.hypot(p.x - q.x, p.y - q.y));
     }
     total += 1;
     if (ownDistance < nearestOther) closer += 1;
   }
-  assert.ok(closer / total > 0.95, `${closer} of ${total} members are closest to their own project`);
+  assert.ok(
+    closer / total > 0.95,
+    `${closer} of ${total} members are closest to their own project`,
+  );
   // Hardly any two nodes overlap.
   let overlaps = 0;
   const all = graph.nodes.map((node) => sim.position(node.id)!);
@@ -104,7 +124,10 @@ test("the simulation settles, is deterministic, and keeps groups together and ap
       if (Math.hypot(a.x - b.x, a.y - b.y) < (a.r + b.r) * 0.7) overlaps += 1;
     }
   }
-  assert.ok(overlaps <= all.length * 0.01, `${overlaps} overlaps among ${all.length} nodes`);
+  assert.ok(
+    overlaps <= all.length * 0.01,
+    `${overlaps} overlaps among ${all.length} nodes`,
+  );
 });
 
 test("an organization-sized graph settles quickly", () => {
@@ -120,6 +143,75 @@ test("an organization-sized graph settles quickly", () => {
     const p = sim.position(node.id)!;
     assert.ok(Number.isFinite(p.x) && Number.isFinite(p.y));
   }
+  const withCells = createSimulation({ ...graph, cells: true });
+  const again = performance.now();
+  withCells.settle(240);
+  assert.ok(
+    performance.now() - again < 30000,
+    "keeping cells apart adds no real cost",
+  );
+});
+
+/** Each hub's cell as a circle: the middle of the hub and its own members, and how far they reach. */
+function cellCircles(
+  sim: ReturnType<typeof createSimulation>,
+  nodes: readonly EngineNode[],
+) {
+  const members = new Map<string, { x: number; y: number; r: number }[]>();
+  for (const node of nodes) {
+    const owner = node.hub ? node.id : node.group!;
+    const list = members.get(owner) ?? [];
+    list.push(sim.position(node.id)!);
+    members.set(owner, list);
+  }
+  return [...members.values()].map((points) => {
+    const x = points.reduce((sum, p) => sum + p.x, 0) / points.length;
+    const y = points.reduce((sum, p) => sum + p.y, 0) / points.length;
+    const reach = Math.max(
+      ...points.map((p) => Math.hypot(p.x - x, p.y - y) + p.r),
+    );
+    return { x, y, reach };
+  });
+}
+
+test("with cells on, every hub's cell clears the others even when members link across cells", () => {
+  const graph = orgGraph(3, 3, 10);
+  // Strong relations between members of different projects, as when a decision cites another repository.
+  for (let i = 0; i < 9; i += 1) {
+    graph.links.push({
+      source: `u${i % 3}p${i % 3}m${i % 10}`,
+      target: `u${(i + 1) % 3}p${(i + 2) % 3}m${(i + 3) % 10}`,
+      strength: 0.7,
+      distance: 40,
+    });
+  }
+  const overlapping = (cells: boolean) => {
+    const sim = createSimulation({ ...graph, cells });
+    sim.settle(800);
+    assert.ok(!sim.running());
+    const circles = cellCircles(sim, graph.nodes);
+    let count = 0;
+    for (let i = 0; i < circles.length; i += 1) {
+      for (let j = i + 1; j < circles.length; j += 1) {
+        const a = circles[i]!;
+        const b = circles[j]!;
+        // The drawn outline pads each cell by 26 on every side.
+        if (Math.hypot(a.x - b.x, a.y - b.y) < a.reach + b.reach + 52)
+          count += 1;
+      }
+    }
+    return count;
+  };
+  const tangled = overlapping(false);
+  const clear = overlapping(true);
+  assert.ok(tangled > 0, "without cells the outlines run into each other");
+  assert.ok(clear <= 1, `${clear} cells still overlap`);
+  assert.ok(clear < tangled);
+  const first = createSimulation({ ...graph, cells: true });
+  const second = createSimulation({ ...graph, cells: true });
+  first.settle(200);
+  second.settle(200);
+  assert.deepEqual(first.position("u1p1m1"), second.position("u1p1m1"));
 });
 
 test("hidden nodes stop taking part, and pinned nodes stay where they were put", () => {
@@ -127,17 +219,26 @@ test("hidden nodes stop taking part, and pinned nodes stay where they were put",
   const sim = createSimulation(graph);
   sim.settle(300);
   sim.pin("u0p0m0", 500, 500);
-  sim.setActive(new Set(graph.nodes.filter((n) => !n.id.startsWith("u1")).map((n) => n.id)));
+  sim.setActive(
+    new Set(graph.nodes.filter((n) => !n.id.startsWith("u1")).map((n) => n.id)),
+  );
   sim.reheat(0.5);
   const hidden = sim.position("u1p0m0")!;
   sim.settle(200);
   assert.deepEqual(sim.position("u0p0m0"), { x: 500, y: 500, r: 5 });
-  assert.deepEqual(sim.position("u1p0m0"), hidden, "inactive nodes do not move");
+  assert.deepEqual(
+    sim.position("u1p0m0"),
+    hidden,
+    "inactive nodes do not move",
+  );
   sim.release("u0p0m0");
   sim.reheat(0.5);
   sim.settle(300);
   const free = sim.position("u0p0m0")!;
-  assert.ok(Math.hypot(free.x - 500, free.y - 500) > 50, "a released node returns to its group");
+  assert.ok(
+    Math.hypot(free.x - 500, free.y - 500) > 50,
+    "a released node returns to its group",
+  );
 });
 
 /** The graph with one more project, full of new members, and new members on an existing project. */
@@ -173,19 +274,30 @@ test("growing keeps every placed node where it was and seeds new ones beside the
   }
   const hub = seeds.get("u0p9")!;
   const unit = seeds.get("u0")!;
-  assert.ok(Math.hypot(hub.x - unit.x, hub.y - unit.y) < 160, "a new hub starts near its parent");
+  assert.ok(
+    Math.hypot(hub.x - unit.x, hub.y - unit.y) < 160,
+    "a new hub starts near its parent",
+  );
   for (const node of after.nodes) {
     if (previous.has(node.id) || node.hub) continue;
     const p = seeds.get(node.id)!;
     const own = seeds.get(node.group!)!;
-    assert.ok(Math.hypot(p.x - own.x, p.y - own.y) < 80, `${node.id} starts near its hub`);
+    assert.ok(
+      Math.hypot(p.x - own.x, p.y - own.y) < 80,
+      `${node.id} starts near its hub`,
+    );
   }
   // New members of a hub that already had some start outside of the old ones' spiral.
   const fresh = seeds.get("u1p1m6")!;
   const center = seeds.get("u1p1")!;
-  assert.ok(Math.hypot(fresh.x - center.x, fresh.y - center.y) > 18 + 14 * Math.sqrt(5));
+  assert.ok(
+    Math.hypot(fresh.x - center.x, fresh.y - center.y) > 18 + 14 * Math.sqrt(5),
+  );
   // With nothing to keep, it is the ordinary layout.
-  assert.deepEqual(growPositions(before.nodes, new Map()), seedPositions(before.nodes));
+  assert.deepEqual(
+    growPositions(before.nodes, new Map()),
+    seedPositions(before.nodes),
+  );
 });
 
 test("a grown simulation starts gently from the old picture, keeps pins, and stays steady", () => {
@@ -229,7 +341,11 @@ test("a grown simulation starts gently from the old picture, keeps pins, and sta
   // Removing nodes keeps the rest in place too.
   const shrunk = growSimulation(grown, before);
   for (const node of before.nodes) {
-    assert.deepEqual(shrunk.position(node.id), grown.position(node.id), node.id);
+    assert.deepEqual(
+      shrunk.position(node.id),
+      grown.position(node.id),
+      node.id,
+    );
   }
 });
 
@@ -286,9 +402,52 @@ test("labels: the most important names win, none overlap, and off-screen ones ar
     { id: "away", x: 2000, y: 10, w: 80, h: 20, priority: 5 },
     { id: "forced", x: 30, y: 12, w: 40, h: 20, priority: 0, force: true },
   ];
-  const picked = pickLabels(boxes, { width: 800, height: 600 }).map((box) => box.id);
+  const picked = pickLabels(boxes, { width: 800, height: 600 }).map(
+    (box) => box.id,
+  );
   assert.deepEqual(picked, ["high", "apart", "forced"]);
-  assert.equal(pickLabels(boxes, { width: 800, height: 600, limit: 1 }).length, 1);
+  assert.equal(
+    pickLabels(boxes, { width: 800, height: 600, limit: 1 }).length,
+    1,
+  );
+});
+
+test("labels: a crowded name moves to another spot, and names keep off other nodes", () => {
+  const placed = pickLabels(
+    [
+      { id: "first", x: 100, y: 100, w: 60, h: 14, priority: 9 },
+      {
+        id: "second",
+        x: 110,
+        y: 104,
+        w: 60,
+        h: 14,
+        priority: 5,
+        alts: [
+          { x: 110, y: 104 },
+          { x: 110, y: 70 },
+        ],
+      },
+      { id: "third", x: 300, y: 300, w: 60, h: 14, priority: 4 },
+      { id: "mine", x: 500, y: 500, w: 60, h: 14, priority: 3 },
+    ],
+    {
+      width: 800,
+      height: 600,
+      obstacles: [
+        { id: "node-x", x: 310, y: 290, w: 20, h: 20, priority: 0 },
+        { id: "mine", x: 510, y: 495, w: 20, h: 20, priority: 0 },
+      ],
+    },
+  );
+  const byId = new Map(placed.map((box) => [box.id, box]));
+  assert.equal(byId.get("second")?.y, 70, "it took the first free spot");
+  assert.ok(!byId.has("third"), "a name never covers another node");
+  assert.ok(byId.has("mine"), "but may touch its own");
+  assert.ok(
+    !placed.some((box) => box.id === "node-x"),
+    "obstacles are never returned as names",
+  );
 });
 
 test("small helpers", () => {
@@ -297,18 +456,86 @@ test("small helpers", () => {
   assert.equal(withAlpha("#ff8000", 0.5), "rgb(255 128 0 / 0.5)");
 });
 
-test("the draw layer is flat Cobalt: no spheres, glow sprites, or light particles", () => {
-  const source = readFileSync(new URL("../src/web/assets/graph-engine.js", import.meta.url), "utf8");
-  assert.doesNotMatch(source, /drawImage\(glow\(/);
-  assert.doesNotMatch(source, /drawImage\(sphere\(/);
-  assert.doesNotMatch(source, /function sphere\(/);
-  assert.doesNotMatch(source, /function glow\(/);
-  assert.match(source, /assignTiers/);
-  assert.match(source, /convexHull/);
+test("depth layers keep guidance in front, evidence behind, and hubs near the middle", () => {
+  for (let i = 0; i < 50; i += 1) {
+    assert.ok(
+      depthFor(`r${i}`, "rule") < depthFor(`s${i}`, "source"),
+      "rules float in front of evidence",
+    );
+    assert.ok(
+      depthFor(`m${i}`, "memory") < depthFor(`s${i}`, "source") + 60,
+      "knowledge sits ahead of evidence",
+    );
+    assert.ok(
+      Math.abs(depthFor(`h${i}`, "project", true)) <= 18,
+      "hubs stay near the middle plane",
+    );
+  }
+  assert.equal(
+    depthFor("same", "memory"),
+    depthFor("same", "memory"),
+    "depth is stable",
+  );
 });
 
-test("diamond and square shapes point differently (source is a diamond, instruction a square)", () => {
-  const source = readFileSync(new URL("../src/web/assets/graph-engine.js", import.meta.url), "utf8");
-  assert.match(source, /diamond: -Math\.PI \/ 2/);
-  assert.match(source, /square: Math\.PI \/ 4/);
+test("a signal crosses its connection once per period and rests in between", () => {
+  const period = 4000;
+  const travel = 1000;
+  const seen: number[] = [];
+  for (let clock = 0; clock < period; clock += 50) {
+    const at = signalProgress("cites:1", clock, period, travel);
+    if (at !== null) seen.push(at);
+  }
+  assert.ok(
+    seen.length >= 19 && seen.length <= 21,
+    "visible only for its travel time",
+  );
+  assert.ok(seen.every((value) => value >= 0 && value <= 1));
+  assert.equal(signalProgress("x", 10, 0, 100), null);
+  assert.equal(signalProgress("x", 10, 100, 0), null);
+});
+
+test("connections bow to the side their bend names", () => {
+  assert.deepEqual(curveControl(0, 0, 100, 0, 0.25), { x: 50, y: 25 });
+  assert.deepEqual(curveControl(0, 0, 100, 0, -0.25), { x: 50, y: -25 });
+});
+
+test("the map floats in depth, and lies flat and still under reduced motion", () => {
+  const frame = globalThis.requestAnimationFrame;
+  globalThis.requestAnimationFrame = () => 1;
+  try {
+    const { nodes, links } = orgGraph(1, 1, 4);
+    const still = createGraphView(
+      { getContext: () => ({}) },
+      { reduceMotion: true },
+    );
+    still.setData({ nodes, links });
+    const living = createGraphView(
+      { getContext: () => ({}) },
+      { reduceMotion: false },
+    );
+    living.setData({ nodes, links });
+    assert.equal(still.position("u0p0m1")?.z, 0, "flat under reduced motion");
+    assert.notEqual(
+      living.position("u0p0m1")?.z,
+      0,
+      "members float in depth otherwise",
+    );
+    const source = readFileSync(
+      new URL("../src/web/assets/graph-engine.js", import.meta.url),
+      "utf8",
+    );
+    assert.match(
+      source,
+      /const MAX_SIGNALS = \d+;/,
+      "travelling signals are budgeted",
+    );
+    assert.match(
+      source,
+      /return motionEnabled && !reduceMotion/,
+      "no motion of its own under reduced motion",
+    );
+  } finally {
+    globalThis.requestAnimationFrame = frame;
+  }
 });

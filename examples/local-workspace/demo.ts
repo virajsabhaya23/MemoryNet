@@ -10,7 +10,7 @@ import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 import { Client } from "@modelcontextprotocol/client";
 import { StdioClientTransport } from "@modelcontextprotocol/client/stdio";
-import { AgentContextSchema, ReceiptCheckSchema } from "../../src/agent-context/contract.ts";
+import { AgentContextSchema, ReceiptCheckV2Schema } from "../../src/agent-context/contract.ts";
 import { approveProposal, createContext, openDatabase, proposeChange, proposeMemory, revokeMemory } from "../../src/index.ts";
 import { localProfilePath } from "../../src/local-project.ts";
 import { readWorkspaceProfile, type WorkspaceProfile } from "../../src/workspace.ts";
@@ -72,7 +72,7 @@ async function fetchContext(c: Client, query: string) {
 async function check(c: Client, retrievalId: string) {
   const r = await c.callTool({ name: "revalidate_context", arguments: { retrievalId } });
   assert.ok(!r.isError, "receipt check failed");
-  return ReceiptCheckSchema.parse(r.structuredContent);
+  return ReceiptCheckV2Schema.parse(r.structuredContent);
 }
 async function publish(profile: WorkspaceProfile, sourceId: string, content: string, previous?: string) {
   const db = await openDatabase(profile.dataDir);

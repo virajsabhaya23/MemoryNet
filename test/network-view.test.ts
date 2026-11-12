@@ -13,6 +13,7 @@ import {
   MAX_PINS,
   MAX_SAVED_VIEWS,
   nearestInDirection,
+  networkChanges,
   nodeStates,
   parseSavedViews,
   provenancePaths,
@@ -133,6 +134,37 @@ const nodes: NodeLike[] = [
   },
   { id: "person", kind: "person", clusterId: "org", status: null, details: {} },
 ];
+
+test("a newer copy of the network names what is new, gone and changed", () => {
+  const before = {
+    clusters: groups,
+    nodes,
+    edges: [{ id: "e1", relation: "cites", from: "m1", to: "s1" }],
+  };
+  const same = networkChanges(before, structuredClone(before));
+  assert.deepEqual(same, { added: [], removed: [], changed: [] });
+
+  const after = structuredClone(before);
+  after.nodes = after.nodes.filter((node) => node.id !== "person");
+  after.nodes.push({
+    id: "m2",
+    kind: "memory",
+    clusterId: "p2",
+    status: "current",
+    details: {},
+  });
+  after.nodes[0]!.details.revision = 2;
+  after.clusters[3]!.pendingNewDefinitions = 1;
+  after.edges = [{ id: "e2", relation: "based_on", from: "d2", to: "s1" }];
+  const change = networkChanges(before, after);
+  assert.deepEqual(change.added, ["m2"]);
+  assert.deepEqual(change.removed, ["person"]);
+  assert.deepEqual(
+    [...change.changed].sort(),
+    ["d2", "m1", "p2", "s1"],
+    "a revision, a group's waiting count, and both ends of connections that came or went",
+  );
+});
 
 test("states, attention, and group measures come only from the records given", () => {
   assert.deepEqual(

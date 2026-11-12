@@ -39,6 +39,7 @@ export const AGENT_PROPOSALS_PATH = "/api/agent/proposals";
 export const AGENT_REPORTS_PATH = "/api/agent/reports";
 export const AGENT_REVALIDATE_PATH = "/api/agent/revalidate";
 export const ReceiptQuerySchema = z.object({ retrievalId: z.uuid() }).strict();
+/** v1 receipt check: delivered decisions only. Superseded by v2; kept published as history. */
 export const ReceiptCheckSchema = z.object({
   status: z.enum(["CURRENT", "STALE", "UNKNOWN"]),
   items: z.array(z.object({
@@ -47,15 +48,28 @@ export const ReceiptCheckSchema = z.object({
     replacement: z.object({ memoryId: z.uuid(), revision: z.number().int().positive() }).nullable(),
   }).strict()).max(20),
 }).strict();
+/** Why a delivered definition is no longer what MemoryNet would deliver. basis_changed: a decision it is based on changed after delivery. */
+export const AGENT_DEFINITION_PIN_REASONS = ["revision_changed", "retired", "basis_changed"] as const;
+/** v2 also rechecks the definitions a task-context receipt delivered; `definitions` is empty for other receipts. */
+export const ReceiptCheckV2Schema = ReceiptCheckSchema.extend({
+  definitions: z.array(z.object({
+    definitionId: z.uuid(), pinnedRevision: z.number().int().positive(), observedRevision: z.number().int().positive(),
+    reasons: z.array(z.enum(AGENT_DEFINITION_PIN_REASONS)),
+  }).strict()).max(6),
+}).strict();
 export type ReceiptQuery = z.infer<typeof ReceiptQuerySchema>;
-export type ReceiptCheck = z.infer<typeof ReceiptCheckSchema>;
+export type ReceiptCheck = z.infer<typeof ReceiptCheckV2Schema>;
 export const AGENT_PATHS: ReadonlySet<string> = new Set([AGENT_REVALIDATE_PATH, AGENT_CONTEXT_PATH, AGENT_TASK_CONTEXT_PATH, AGENT_PROPOSALS_PATH, AGENT_REPORTS_PATH]);
 
-// Mirrors MEMORY_TYPES, MEMORY_RELATIONS and CONTENT_FLAGS (a test keeps them equal) so the MCP process
-// never imports database code.
+// Mirrors MEMORY_TYPES, MEMORY_RELATIONS, CONTENT_FLAGS, DEFINITION_KINDS and SCOPE_LEVELS (a test keeps them
+// equal) so the MCP process never imports database code.
 export const AGENT_MEMORY_TYPES = ["decision", "rationale", "lesson", "constraint", "failed_approach", "incident"] as const;
 export const AGENT_RELATIONS = ["depends_on", "refines", "conflicts_with", "related"] as const;
 export const AGENT_CONTENT_FLAGS = ["secret_removed", "personal_data", "truncated", "instruction_like"] as const;
+export const AGENT_DEFINITION_KINDS = ["agent", "skill", "instruction", "rule"] as const;
+export const AGENT_SCOPE_LEVELS = ["organization", "business_unit", "project"] as const;
+/** How a decision a definition is based on changed after that definition version was approved. */
+export const AGENT_BASIS_CHANGES = ["revised", "suspended", "superseded", "revoked"] as const;
 /** v2 citations also carry review flags, so an agent knows when an excerpt looked like instructions. */
 const TaskCitationSchema = CitationSchema.extend({ flags: z.array(z.enum(AGENT_CONTENT_FLAGS)).max(4) }).strict();
 
@@ -76,8 +90,7 @@ const ReasonSchema = z.discriminatedUnion("kind", [
   z.object({ kind: z.literal("shared_evidence"), memoryId: z.uuid(), sourceId: z.uuid() }).strict(),
 ]);
 
-export const AgentTaskContextSchema = z.object({
-  schemaVersion: z.literal(2),
+const TaskContextFields = {
   scope: AgentScopeSchema,
   retrievalId: z.uuid(), retrievedAt: z.iso.datetime(),
   outcome: z.enum(["results", "no_results"]),
@@ -94,8 +107,48 @@ export const AgentTaskContextSchema = z.object({
   moreChangedDependencies: z.number().int().nonnegative(),
   omitted: z.number().int().nonnegative(),
   budget: z.object({ maxTokens: z.number().int().positive(), usedTokens: z.number().int().nonnegative() }).strict(),
-}).strict().refine((r) => (r.outcome === "results") === (r.items.length > 0), "Outcome must match delivered guidance");
-export type AgentTaskContextResponse = z.infer<typeof AgentTaskContextSchema>;
+};
+const outcomeMatchesItems = (r: { outcome: string; items: readonly unknown[] }) => (r.outcome === "results") === (r.items.length > 0);
+
+/** v2 task context: decisions only. Superseded by v3; kept published as history. */
+export const AgentTaskContextSchema = z.object({
+  schemaVersion: z.literal(2),
+  ...TaskContextFields,
+}).strict().refine(outcomeMatchesItems, "Outcome must match delivered guidance");
+
+const DefinitionReasonSchema = z.discriminatedUnion("kind", [
+  z.object({ kind: z.literal("applies_to_scope") }).strict(),
+  z.object({ kind: z.literal("runs_as_caller") }).strict(),
+  z.object({ kind: z.literal("matched_task") }).strict(),
+  z.object({ kind: z.literal("matched_path"), path: z.string().max(200), pattern: z.string().max(200).nullable() }).strict(),
+]);
+
+/** A reviewed definition at its current version. Compact items leave out responsibilities, boundaries and unchanged bases. */
+const TaskDefinitionSchema = z.object({
+  definitionId: z.uuid(), revision: z.number().int().positive(), kind: z.enum(AGENT_DEFINITION_KINDS),
+  name: z.string().max(120), purpose: z.string().max(300), responsibilities: z.array(z.string().max(300)).max(20),
+  instructions: z.string().max(1500), shortened: z.boolean(),
+  boundaries: z.array(z.string().max(300)).max(20), appliesTo: z.string().max(300).nullable(),
+  scope: z.object({ level: z.enum(AGENT_SCOPE_LEVELS), id: z.uuid() }).strict(),
+  approvedBy: z.uuid(), approvedAt: z.iso.datetime(), compact: z.boolean(),
+  reasons: z.array(DefinitionReasonSchema).min(1).max(5),
+  basedOn: z.array(z.object({ memoryId: z.uuid(), change: z.enum(AGENT_BASIS_CHANGES).nullable(), replacedBy: z.uuid().nullable() }).strict()).max(30),
+  reviewNeeded: z.boolean(),
+}).strict();
+
+/**
+ * v3 adds reviewed definitions: rules, instructions and matching skills of the bound project, its business unit and
+ * its organization, plus the agent definition the caller runs as. `outcome` still describes decisions only.
+ */
+export const AgentTaskContextV3Schema = z.object({
+  schemaVersion: z.literal(3),
+  ...TaskContextFields,
+  definitions: z.array(TaskDefinitionSchema).max(6),
+  moreDefinitions: z.number().int().nonnegative(),
+}).strict().refine(outcomeMatchesItems, "Outcome must match delivered decisions")
+  .refine((r) => r.definitions.every((d) => d.reviewNeeded === d.basedOn.some((basis) => basis.change !== null)),
+    "reviewNeeded must match the changed decisions a definition is based on");
+export type AgentTaskContextResponse = z.infer<typeof AgentTaskContextV3Schema>;
 
 /** A pending proposal for human review. Agents can never approve, and a proposal is never guidance. */
 export const AgentProposeSchema = z.object({
@@ -135,14 +188,16 @@ export const AgentReportReceiptSchema = z.object({
 }).strict();
 export type AgentReportReceipt = z.infer<typeof AgentReportReceiptSchema>;
 
-/** Published JSON Schemas (docs/contracts/), regenerated by npm run contract:export and checked by tests. */
+/** Published JSON Schemas (docs/contracts/), regenerated by npm run contract:export and checked by tests. Superseded versions stay published as history. */
 export const AGENT_CONTRACT_SCHEMAS = [
   ["receipt-query-v1", ReceiptQuerySchema],
   ["receipt-check-v1", ReceiptCheckSchema],
+  ["receipt-check-v2", ReceiptCheckV2Schema],
   ["agent-query-v1", AgentQuerySchema],
   ["agent-context-v1", AgentContextSchema],
   ["agent-task-query-v2", AgentTaskQuerySchema],
   ["agent-task-context-v2", AgentTaskContextSchema],
+  ["agent-task-context-v3", AgentTaskContextV3Schema],
   ["agent-proposal-v1", AgentProposeSchema],
   ["agent-proposal-receipt-v1", AgentProposalReceiptSchema],
   ["agent-report-v1", AgentReportSchema],

@@ -1,8 +1,10 @@
 import { requireRepositoryId } from "./repository-identity.ts";
-import { requireCaller, requireRole, resolveScope, type Principal } from "./access.ts";
+import { requireCaller, requireRole, resolveScope, type Principal, type ScopeLevel } from "./access.ts";
 import { mayContainPersonalData, requireNoSecrets } from "./content-checks.ts";
 import { accessFreshSince, type MemoryNetContext } from "./context.ts";
 import type { Queryable } from "./db.ts";
+import { basedOnChanges, type BasedOnChange } from "./definition-freshness.ts";
+import { readableProjectDefinitions, type Definition, type DefinitionKind } from "./definitions.ts";
 import { MemoryNetError, UnavailableError, ValidationError } from "./errors.ts";
 import {
   READABLE_MEMORIES_SQL,
@@ -13,7 +15,7 @@ import {
   type Memory,
   type MemoryType,
 } from "./knowledge.ts";
-import { parseRelations, pathMatches, pathSpecificity, requirePathPattern, type MemoryRelation, type MemoryRelations } from "./relations.ts";
+import { parseRelations, pathMatches, pathSpecificity, readableMemoryIds, requirePathPattern, type MemoryRelation, type MemoryRelations } from "./relations.ts";
 import { recordRetrieval, type Citation } from "./retrieval.ts";
 import { MINIMUM_ROLE } from "./roles.ts";
 import { requireId } from "./validation.ts";
@@ -32,6 +34,10 @@ export const TASK_CONTEXT_LIMITS = {
   compactLength: 240,
   citationsPerItem: 3,
   excerptLength: 300,
+  /** Definitions share the token budget: at most this part of it, and at most `definitions` of them. */
+  definitionShare: 0.35,
+  definitions: 6,
+  pathReasonsPerDefinition: 3,
 } as const;
 
 /** Why an item was included. Every item has at least one reason. */
@@ -63,10 +69,51 @@ export interface TaskContextItem {
   moreCitations: number;
 }
 
+/** Why a definition was delivered. Every delivered definition has at least one reason. */
+export type TaskContextDefinitionReason =
+  /** A rule or instruction of the project, its business unit or its organization: it applies to all work there. */
+  | { kind: "applies_to_scope" }
+  /** The agent definition the calling agent account runs as. */
+  | { kind: "runs_as_caller" }
+  | { kind: "matched_task" }
+  /** The file matched a path pattern in its appliesTo, or (pattern null) the words of its name, purpose, appliesTo or responsibilities. */
+  | { kind: "matched_path"; path: string; pattern: string | null };
+
+/** A reviewed definition delivered as organizational guidance, at its current approved version. */
+export interface TaskContextDefinition {
+  definitionId: string;
+  revision: number;
+  kind: DefinitionKind;
+  name: string;
+  purpose: string;
+  /** What it requires, asks for or does. Empty when compact. */
+  responsibilities: string[];
+  /** Full text up to the limit, or a short preview when compact. */
+  instructions: string;
+  shortened: boolean;
+  /** What it does not cover or must never do. Empty when compact. */
+  boundaries: string[];
+  appliesTo: string | null;
+  scope: { level: ScopeLevel; id: string };
+  approvedBy: string;
+  approvedAt: Date;
+  /** True when only a preview fit in its share of the token budget. */
+  compact: boolean;
+  reasons: TaskContextDefinitionReason[];
+  /**
+   * Decisions this version is based on that the caller may read; change is null while one is unchanged. The
+   * replacement is named only when the caller may read it. Compact items list changed decisions only.
+   */
+  basedOn: Array<{ memoryId: string; change: BasedOnChange["change"] | null; replacedBy: string | null }>;
+  /** A decision it is based on changed after this version was approved, so it may be outdated. */
+  reviewNeeded: boolean;
+}
+
 export interface TaskContextResponse {
   retrievalId: string;
   projectId: string;
   retrievedAt: Date;
+  /** Whether any decision was delivered; definitions do not change it. */
   outcome: "results" | "no_results";
   items: TaskContextItem[];
   /**
@@ -85,6 +132,13 @@ export interface TaskContextResponse {
   moreChangedDependencies: number;
   /** Relevant guidance left out by the item limit or token budget. */
   omitted: number;
+  /**
+   * The caller's own agent definition, then rules and instructions (project, business unit, organization), then
+   * skills matching the task or files, best match first. Only active definitions of the project's own chain.
+   */
+  definitions: TaskContextDefinition[];
+  /** Eligible definitions left out by their item limit or share of the token budget. */
+  moreDefinitions: number;
   budget: { maxTokens: number; usedTokens: number };
   applicability: { repositoryId: string; branch: string; at: Date } | null;
 }
@@ -197,12 +251,147 @@ function addEdge(adjacency: Map<string, Edge[]>, from: string, edge: Edge): void
   else adjacency.set(from, [edge]);
 }
 
+interface DefinitionCandidate {
+  definition: Definition;
+  reasons: TaskContextDefinitionReason[];
+  basedOn: TaskContextDefinition["basedOn"];
+  reviewNeeded: boolean;
+  /** Orders matching skills: path patterns, then path words, then task text rank. */
+  strength: number;
+}
+
+const LEVEL_ORDER: Readonly<Record<ScopeLevel, number>> = { project: 0, business_unit: 1, organization: 2 };
+const KIND_ORDER: Readonly<Record<DefinitionKind, number>> = { agent: 0, rule: 1, instruction: 1, skill: 2 };
+
+/** Path patterns such as src/payments/** written in a definition's appliesTo. Other words are ignored. */
+function appliesToPatterns(appliesTo: string | null): string[] {
+  const patterns: string[] = [];
+  for (const word of appliesTo?.split(/[\s,;()"'`]+/) ?? []) {
+    const candidate = word.replace(/[.:]+$/, "");
+    if (!/[/*?]/.test(candidate)) continue;
+    try { patterns.push(requirePathPattern(candidate)); } catch { /* prose, not a path pattern */ }
+  }
+  return patterns;
+}
+
+/** For each definition: whether the task words match its text, their rank, and the files whose words match it. */
+async function matchDefinitions(q: Queryable, definitions: readonly Definition[], terms: string, paths: readonly string[]) {
+  if (definitions.length === 0) return [];
+  const { rows } = await q.query<{ task: boolean; rank: number; paths: string[] }>(
+    `WITH docs AS (
+       SELECT u.i, setweight(to_tsvector('english', u.name), 'A') || setweight(to_tsvector('english', u.purpose || ' ' || u.applies_to), 'B')
+                   || setweight(to_tsvector('english', u.duties), 'C') AS doc
+       FROM unnest($1::text[], $2::text[], $3::text[], $4::text[]) WITH ORDINALITY AS u(name, purpose, applies_to, duties, i)),
+     files AS (
+       SELECT f.path, f.n, replace(plainto_tsquery('english', regexp_replace(f.path, '[^[:alnum:]]+', ' ', 'g'))::text, ' & ', ' | ') AS words
+       FROM unnest($6::text[]) WITH ORDINALITY AS f(path, n))
+     SELECT CASE WHEN $5 = '' THEN false ELSE docs.doc @@ $5::tsquery END AS task,
+            CASE WHEN $5 = '' THEN 0 ELSE ts_rank(docs.doc, $5::tsquery) END AS rank,
+            COALESCE((SELECT array_agg(files.path ORDER BY files.n) FROM files
+                      WHERE CASE WHEN files.words = '' THEN false ELSE docs.doc @@ files.words::tsquery END), '{}') AS paths
+     FROM docs ORDER BY docs.i`,
+    [definitions.map((d) => d.name), definitions.map((d) => d.purpose), definitions.map((d) => d.appliesTo ?? ""),
+      definitions.map((d) => d.responsibilities.join("\n")), terms, [...paths]],
+  );
+  return rows.map((row) => ({ task: row.task, rank: Number(row.rank), paths: row.paths }));
+}
+
+/**
+ * Active definitions of the project, its business unit and its organization that the caller may see, never
+ * another unit's or project's: rules and instructions always, skills when the task or a file matches them, and
+ * agent definitions only when they run as the caller. reviewNeeded and basedOn use only memories the caller may read.
+ */
+async function selectDefinitions(
+  q: Queryable,
+  ctx: MemoryNetContext,
+  caller: Principal,
+  projectId: string,
+  terms: string,
+  paths: readonly string[],
+): Promise<DefinitionCandidate[]> {
+  const { definitions, linkedMemories } = await readableProjectDefinitions(q, ctx, caller, projectId);
+  const active = definitions.filter((d) => d.status === "active" && (d.kind !== "agent" || d.runsAs === caller.id));
+  const matches = await matchDefinitions(q, active, terms, paths);
+  const readable = new Map(linkedMemories.map((memory) => [memory.id, memory]));
+  const candidates: Array<DefinitionCandidate & { changes: BasedOnChange[] }> = [];
+  for (const [index, definition] of active.entries()) {
+    const match = matches[index]!;
+    const found: TaskContextDefinitionReason[] = match.task ? [{ kind: "matched_task" }] : [];
+    const patterns = appliesToPatterns(definition.appliesTo);
+    let patternPaths = 0, wordPaths = 0;
+    for (const path of paths) {
+      if (patternPaths + wordPaths === TASK_CONTEXT_LIMITS.pathReasonsPerDefinition) break;
+      const pattern = patterns.find((item) => pathMatches(item, path));
+      if (pattern !== undefined) { found.push({ kind: "matched_path", path, pattern }); patternPaths++; }
+      else if (match.paths.includes(path)) { found.push({ kind: "matched_path", path, pattern: null }); wordPaths++; }
+    }
+    if (definition.kind === "skill" && found.length === 0) continue;
+    const own: TaskContextDefinitionReason[] = definition.kind === "agent" ? [{ kind: "runs_as_caller" }]
+      : definition.kind === "skill" ? [] : [{ kind: "applies_to_scope" }];
+    const changes = basedOnChanges(definition, readable);
+    candidates.push({ definition, reasons: [...own, ...found], basedOn: [], reviewNeeded: changes.length > 0,
+      strength: 2 * patternPaths + wordPaths + (match.task ? match.rank : 0), changes });
+  }
+  // A replacement is named only when the caller may read it.
+  const replacements = candidates.flatMap((c) => c.changes.flatMap((change) => change.replacedBy ?? []));
+  const nameable = await readableMemoryIds(q, ctx, caller, READABLE_MEMORIES_SQL, replacements);
+  for (const candidate of candidates) {
+    const changed = new Map(candidate.changes.map((change) => [change.memoryId, change]));
+    // Links already follow the caller's view, so every based_on target here is readable.
+    const linked = new Set(candidate.definition.links.filter((link) => link.relation === "based_on").map((link) => link.targetId));
+    candidate.basedOn = [...linked].map((memoryId) => {
+      const change = changed.get(memoryId);
+      const replacedBy = change?.replacedBy ?? null;
+      return { memoryId, change: change?.change ?? null, replacedBy: replacedBy !== null && nameable.has(replacedBy) ? replacedBy : null };
+    });
+  }
+  const name = (d: Definition) => d.name.toLowerCase();
+  return candidates.sort((a, b) => {
+    const x = a.definition, y = b.definition;
+    return KIND_ORDER[x.kind] - KIND_ORDER[y.kind] || (x.kind === "skill" ? b.strength - a.strength : 0)
+      || LEVEL_ORDER[x.scope.level] - LEVEL_ORDER[y.scope.level] || Number(x.kind === "instruction") - Number(y.kind === "instruction")
+      || (name(x) < name(y) ? -1 : name(x) > name(y) ? 1 : 0) || x.id.localeCompare(y.id);
+  });
+}
+
+function definitionItem(candidate: DefinitionCandidate, compact: boolean): TaskContextDefinition {
+  const { definition } = candidate;
+  const text = cut(definition.instructions, compact ? TASK_CONTEXT_LIMITS.compactLength : TASK_CONTEXT_LIMITS.contentLength);
+  return {
+    definitionId: definition.id, revision: definition.revision, kind: definition.kind, name: definition.name, purpose: definition.purpose,
+    responsibilities: compact ? [] : definition.responsibilities, instructions: text.text, shortened: text.shortened,
+    boundaries: compact ? [] : definition.boundaries, appliesTo: definition.appliesTo, scope: definition.scope,
+    approvedBy: definition.approvedBy, approvedAt: definition.approvedAt, compact, reasons: candidate.reasons,
+    basedOn: compact ? candidate.basedOn.filter((item) => item.change !== null) : candidate.basedOn,
+    reviewNeeded: candidate.reviewNeeded,
+  };
+}
+
+/** Packs definitions into their share of the budget: whole when they fit, else a preview, else counted as left out. */
+function packDefinitions(candidates: readonly DefinitionCandidate[], maxTokens: number) {
+  const budget = Math.floor(maxTokens * TASK_CONTEXT_LIMITS.definitionShare);
+  const definitions: TaskContextDefinition[] = [];
+  let used = 0, more = 0;
+  for (const candidate of candidates) {
+    if (definitions.length >= TASK_CONTEXT_LIMITS.definitions) { more++; continue; }
+    const full = definitionItem(candidate, false);
+    const fullCost = estimateTokens(full);
+    if (used + fullCost <= budget) { definitions.push(full); used += fullCost; continue; }
+    const preview = definitionItem(candidate, true);
+    const previewCost = estimateTokens(preview);
+    if (used + previewCost <= budget) { definitions.push(preview); used += previewCost; continue; }
+    more++;
+  }
+  return { definitions, more, used };
+}
+
 /**
  * Approved, current guidance for a task: memories matching the task text or governing the given paths,
  * then memories they depend on, refine, conflict with or share evidence with, scored by bounded spreading
  * activation over reviewed relations and packed into a token budget. Only memories the caller may read and
  * that apply to the scope are ever considered, so a relation never reveals or reaches hidden guidance.
- * Every response is recorded as a retrieval receipt.
+ * Reviewed definitions of the project's own chain that apply to the task share the budget (see selectDefinitions).
+ * Every response is recorded as a retrieval receipt, with each delivered memory and definition version.
  */
 export async function getTaskContext(ctx: MemoryNetContext, callerId: string, input: TaskContextInput): Promise<TaskContextResponse> {
   const projectId = requireId(input.projectId, "projectId");
@@ -238,6 +427,8 @@ export async function getTaskContext(ctx: MemoryNetContext, callerId: string, in
       }
       const candidates = await loadCandidates(tx, readCtx, caller, projectId, terms, scope);
       const byId = new Map(candidates.map((candidate) => [candidate.id, candidate]));
+      // Definitions take their share of the budget first; decisions keep the rest.
+      const guidance = packDefinitions(await selectDefinitions(tx, readCtx, caller, projectId, terms, paths), maxTokens);
 
       // Seeds: text relevance and reviewed path anchors, combined as a probabilistic OR.
       const maxRank = Math.max(0, ...candidates.map((c) => c.rank));
@@ -336,7 +527,7 @@ export async function getTaskContext(ctx: MemoryNetContext, callerId: string, in
       }
       const top = Math.max(...order.map((id) => score.get(id) ?? 0), MIN_SCORE);
       const items: TaskContextItem[] = [];
-      let used = 60;
+      let used = 60 + guidance.used;
       let omitted = Math.max(0, ranked.length - order.length);
       for (const id of order) {
         const memory = records.get(id);
@@ -394,12 +585,14 @@ export async function getTaskContext(ctx: MemoryNetContext, callerId: string, in
         retrievedAt,
         ...(scope ? { applicability: scope } : {}),
         items: items.map((item) => ({ memoryId: item.memoryId, revision: item.revision, status: "approved" as const })),
+        definitions: guidance.definitions.map((definition) => ({ definitionId: definition.definitionId, revision: definition.revision })),
       });
       return {
         retrievalId, projectId, retrievedAt, outcome, items,
         conflicts: allConflicts.slice(0, MAX_NOTICES), moreConflicts: Math.max(0, allConflicts.length - MAX_NOTICES),
         changedDependencies: allChanged.slice(0, MAX_NOTICES), moreChangedDependencies: Math.max(0, allChanged.length - MAX_NOTICES),
-        omitted, budget: { maxTokens, usedTokens: used }, applicability: scope,
+        omitted, definitions: guidance.definitions, moreDefinitions: guidance.more,
+        budget: { maxTokens, usedTokens: used }, applicability: scope,
       };
     });
   } catch (error) {

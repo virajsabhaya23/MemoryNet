@@ -12,6 +12,7 @@ import {
 } from "./content-checks.ts";
 import { accessFreshSince, type MemoryNetContext } from "./context.ts";
 import { firstRow, type Queryable } from "./db.ts";
+import type { DefinitionKind } from "./definitions.ts";
 import { MemoryNetError, UnavailableError, ValidationError } from "./errors.ts";
 import {
   findReadableMemory,
@@ -190,9 +191,11 @@ export interface NewRecord {
     revision: number;
     status: MemoryStatus;
   }>;
+  /** Definition versions delivered as reviewed guidance, in delivery order. */
+  definitions?: ReadonlyArray<{ definitionId: string; revision: number }>;
 }
 
-/** Writes one append-only receipt and its items. Call inside the retrieval's transaction. */
+/** Writes one append-only receipt, its items and its delivered definitions. Call inside the retrieval's transaction. */
 export async function recordRetrieval(
   q: Queryable,
   record: NewRecord,
@@ -218,6 +221,12 @@ export async function recordRetrieval(
       `INSERT INTO retrieval_items (retrieval_id, position, memory_id, revision, status, status_generation)
        VALUES ($1, $2, $3, $4, $5, (SELECT status_generation FROM memories WHERE id=$3 AND current_revision=$4))`,
       [id, index + 1, item.memoryId, item.revision, item.status],
+    );
+  }
+  for (const [index, definition] of (record.definitions ?? []).entries()) {
+    await q.query(
+      "INSERT INTO retrieval_definitions (retrieval_id, position, definition_id, revision) VALUES ($1, $2, $3, $4)",
+      [id, index + 1, definition.definitionId, definition.revision],
     );
   }
   return id;
@@ -366,6 +375,15 @@ export interface RetrievedItem {
   title: string;
 }
 
+/** A definition version a retrieval delivered as reviewed guidance. */
+export interface RetrievedDefinition {
+  definitionId: string;
+  revision: number;
+  kind: DefinitionKind;
+  /** The name of that version. */
+  name: string;
+}
+
 export interface RetrievalRecord {
   id: string;
   projectId: string;
@@ -376,6 +394,8 @@ export interface RetrievalRecord {
   retrievedAt: Date;
   /** What it returned that the viewer may read now. Anything else is left out without a trace. */
   items: RetrievedItem[];
+  /** Definitions it delivered that the viewer may see now, in delivery order. */
+  definitions: RetrievedDefinition[];
   applicability: DecisionContextScope | null;
 }
 
@@ -455,6 +475,30 @@ export async function listRetrievals(
     });
     byRetrieval.set(item.retrieval_id, list);
   }
+  // Same rule as definition pages: a role at the definition's level, above it, or inside it.
+  const delivered = await ctx.db.query<{
+    retrieval_id: string;
+    definition_id: string;
+    revision: number;
+    kind: DefinitionKind;
+    name: string;
+  }>(
+    `SELECT rd.retrieval_id, rd.definition_id, rd.revision, d.kind, dr.name
+     FROM retrieval_definitions rd
+     JOIN definitions d ON d.id = rd.definition_id
+     JOIN definition_revisions dr ON dr.definition_id = rd.definition_id AND dr.revision = rd.revision
+     WHERE rd.retrieval_id = ANY($1::uuid[])
+       AND EXISTS (SELECT 1 FROM definition_read_access dra
+                   WHERE dra.definition_id = rd.definition_id AND dra.principal_id = $2)
+     ORDER BY rd.retrieval_id, rd.position`,
+    [rows.map((row) => row.id), caller.id],
+  );
+  const definitionsByRetrieval = new Map<string, RetrievedDefinition[]>();
+  for (const row of delivered.rows) {
+    const list = definitionsByRetrieval.get(row.retrieval_id) ?? [];
+    list.push({ definitionId: row.definition_id, revision: row.revision, kind: row.kind, name: row.name });
+    definitionsByRetrieval.set(row.retrieval_id, list);
+  }
   return rows.map((row) => ({
     id: row.id,
     projectId: row.project_id,
@@ -463,6 +507,7 @@ export async function listRetrievals(
     failed: row.outcome === "failed",
     retrievedAt: row.retrieved_at,
     items: byRetrieval.get(row.id) ?? [],
+    definitions: definitionsByRetrieval.get(row.id) ?? [],
     applicability: row.applicability === null ? null : { repositoryId: row.applicability.repositoryId, branch: row.applicability.branch, at: new Date(row.applicability.at) },
   }));
 }

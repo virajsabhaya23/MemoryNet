@@ -42,7 +42,11 @@ test("the network page embeds exactly the viewer's network and draws it with sam
   const olivia = await as(app, env.db, "Olivia Owner");
   const reply = await olivia.get(`/orgs/${acme}/network`);
   assert.equal(reply.status, 200);
-  assert.doesNotMatch(reply.body, /\bglass\b/, "HUD panels are flat Cobalt, not glass");
+  assert.doesNotMatch(
+    reply.body,
+    /\bglass\b/,
+    "HUD panels are flat Cobalt, not glass",
+  );
   assert.match(reply.body, /net-head panel/);
   const script = await olivia.get("/assets/network.js");
   assert.match(script.body, /cardMeta/);
@@ -51,9 +55,15 @@ test("the network page embeds exactly the viewer's network and draws it with sam
   assert.match(script.body, /net-path-chain ledger/);
   assert.match(script.body, /\/suspend/);
   assert.match(script.body, /dblclick/);
-  const payload = JSON.parse(/<script type="application\/json" id="network-data">([\s\S]*?)<\/script>/.exec(reply.body)?.[1] ?? "{}");
+  const payload = JSON.parse(
+    /<script type="application\/json" id="network-data">([\s\S]*?)<\/script>/.exec(
+      reply.body,
+    )?.[1] ?? "{}",
+  );
   assert.equal(typeof payload.csrf, "string");
-  const memory = payload.nodes?.find((node: any) => node.kind === "memory" && node.status === "current");
+  const memory = payload.nodes?.find(
+    (node: any) => node.kind === "memory" && node.status === "current",
+  );
   assert.ok(memory, "payload has a current memory");
   assert.equal(typeof memory.actions?.suspend, "boolean");
   assert.equal(memory.actions?.report, true);
@@ -144,6 +154,66 @@ test("people see only their part of the network, and outsiders see none of it", 
   assert.equal((await oscar.get(`/orgs/${acme}/network`)).status, 404);
   const gina = await as(app, env.db, "Gina Globex");
   assert.equal((await gina.get(`/orgs/${acme}/network`)).status, 404);
+});
+
+test("the open map stays current through a live check that only ever answers what the person may see", async () => {
+  const app = openApp(env.ctx);
+  await loadExample(app);
+  const acme = await idOf(env.db, "organizations", "acme-synthetic");
+  const checkout = await idOf(env.db, "projects", "checkout");
+  const olivia = await as(app, env.db, "Olivia Owner");
+  const page = await olivia.get(`/orgs/${acme}/network`);
+  const embedded = dataBlock(page.body) as { version: string };
+  assert.match(embedded.version, /^[0-9a-f]{24}$/);
+  assert.match(page.body, /id="net-live"/);
+
+  const live = await olivia.get(`/orgs/${acme}/network/live`);
+  assert.equal(live.status, 200);
+  assert.equal(live.headers["Content-Type"], "application/json; charset=utf-8");
+  assert.equal(live.headers["Cache-Control"], "no-store");
+  assert.equal(live.headers.ETag, `"${embedded.version}"`);
+  assert.deepEqual(
+    JSON.parse(live.body),
+    dataBlock(page.body),
+    "the same records as the page, built the same way",
+  );
+  const unchanged = await olivia.request("GET", `/orgs/${acme}/network/live`, {
+    headers: { "if-none-match": `"${embedded.version}"` },
+  });
+  assert.equal(unchanged.status, 304);
+  assert.equal(unchanged.body, "");
+
+  const cody = await as(app, env.db, "Cody Contributor");
+  const proposed = await cody.post(`/scopes/project/${checkout}/definitions`, {
+    kind: "skill",
+    name: "Synthetic live check skill",
+    purpose: "Synthetic purpose.",
+    responsibilities: "Synthetic duty",
+  });
+  assert.equal(proposed.status, 303);
+  const changed = await olivia.request("GET", `/orgs/${acme}/network/live`, {
+    headers: { "if-none-match": `"${embedded.version}"` },
+  });
+  assert.equal(changed.status, 200, "a waiting proposal is a change");
+  assert.notEqual(changed.headers.ETag, `"${embedded.version}"`);
+
+  const rudy = await as(app, env.db, "Rudy Reader");
+  const reader = await rudy.get(`/orgs/${acme}/network/live`);
+  assert.equal(reader.status, 200);
+  for (const hidden of ["Payments", "Helpdesk", "Support Tools", "card SDK"]) {
+    assert.ok(
+      !reader.body.includes(hidden),
+      `a Checkout reader's live copy never mentions ${hidden}`,
+    );
+  }
+  const oscar = await as(app, env.db, "Oscar Outsider");
+  assert.equal((await oscar.get(`/orgs/${acme}/network/live`)).status, 404);
+  const stranger = new TestBrowser(app);
+  assert.notEqual(
+    (await stranger.get(`/orgs/${acme}/network/live`)).status,
+    200,
+    "nobody signed in gets nothing",
+  );
 });
 
 test("text in a definition can never break out of the page or its data block", async () => {

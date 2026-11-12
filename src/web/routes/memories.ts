@@ -23,6 +23,7 @@ import { ROLE_RANK } from "../../roles.ts";
 import {
   badge,
   html,
+  metaLine,
   options,
   preview,
   recordHead,
@@ -127,7 +128,7 @@ async function changeForm(
   const people = await listProjectPeople(rc.ctx, user.id, view.project.id);
   const cited = new Set(memory.evidence.map((item) => item.sourceId));
   const relationBlock = await relationFields(rc, memory.projectId, memory.relations, memory.id);
-  return html`<details class="edit">
+  return html`<details id="propose-change" class="edit">
     <summary>Propose a change</summary>
     <p class="hint">
       Builds on version ${memory.revision}. Nothing changes until a different
@@ -294,7 +295,8 @@ async function memoryPage(rc: RequestContext): Promise<WebResponse> {
         actions: html`<a class="key" href="/memories/${memory.id}/history">History</a>${memory.status === "approved" ? html` <a class="key" href="/orgs/${view.tree.organization.id}/network?node=${encodeURIComponent(`memory:${memory.id}`)}">Show in the network</a>` : ""}`,
       })}
       ${statusNotice(history, names)}
-      ${applicabilityView(memory.applicability, rc.ctx.now())}
+      <div class="workspace-columns">
+      <div class="workspace-main">
       <section>
         <h2>${memory.status === "revoked" ? "Historical decision" : "Knowledge"}</h2>
         <p class="content">${memory.content}</p>
@@ -304,32 +306,7 @@ async function memoryPage(rc: RequestContext): Promise<WebResponse> {
         <h2>Evidence</h2>
         ${evidenceList(memory.evidence)}
       </section>
-      <section>
-        <h2>Record</h2>
-        <dl class="facts">
-          <dt>Memory ID</dt>
-          <dd><code>${memory.id}</code> (never changes)</dd>
-          <dt>Project</dt>
-          <dd>
-            <a href="/projects/${view.project.id}">${view.project.name}</a>
-          </dd>
-          <dt>Owner</dt>
-          <dd>${nameOf(names, memory.ownerId)}</dd>
-          <dt>Version ${memory.revision} proposed by</dt>
-          <dd>${nameOf(names, memory.proposedBy)}</dd>
-          <dt>Approved by</dt>
-          <dd>${nameOf(names, memory.approvedBy)} on ${memory.approvedAt}${memory.approvals > 1 ? ` · ${memory.approvals} different reviewers approved this version` : ""}</dd>
-          <dt>Review record</dt>
-          <dd>
-            ${seesProposals
-              ? html`<a href="/proposals/${memory.proposalId}">proposal</a>
-                  (version ${memory.proposalRevision} approved)`
-              : html`<span class="muted"
-                  >visible to contributors and above</span
-                >`}
-          </dd>
-        </dl>
-      </section>
+      ${applicabilityView(memory.applicability, rc.ctx.now())}
       ${seesProposals
         ? html`<section>
             <h2>Pending changes</h2>
@@ -371,10 +348,40 @@ async function memoryPage(rc: RequestContext): Promise<WebResponse> {
           "No open reports.",
         )}
       </section>
-      ${actions}
       ${changeable && rank >= ROLE_RANK.contributor
         ? await changeForm(rc, history, view)
-        : ""}`,
+        : ""}
+      </div>
+      <aside class="workspace-side" aria-label="Record and actions">
+      <section>
+        <h2>Record</h2>
+        <dl class="facts">
+          <dt>Memory ID</dt>
+          <dd><code>${memory.id}</code> (never changes)</dd>
+          <dt>Project</dt>
+          <dd>
+            <a href="/projects/${view.project.id}">${view.project.name}</a>
+          </dd>
+          <dt>Owner</dt>
+          <dd>${nameOf(names, memory.ownerId)}</dd>
+          <dt>Version ${memory.revision} proposed by</dt>
+          <dd>${nameOf(names, memory.proposedBy)}</dd>
+          <dt>Approved by</dt>
+          <dd>${nameOf(names, memory.approvedBy)} on ${memory.approvedAt}${memory.approvals > 1 ? ` · ${memory.approvals} different reviewers approved this version` : ""}</dd>
+          <dt>Review record</dt>
+          <dd>
+            ${seesProposals
+              ? html`<a href="/proposals/${memory.proposalId}">proposal</a>
+                  (version ${memory.proposalRevision} approved)`
+              : html`<span class="muted"
+                  >visible to contributors and above</span
+                >`}
+          </dd>
+        </dl>
+      </section>
+      ${actions}
+      </aside>
+      </div>`,
   });
 }
 
@@ -443,14 +450,9 @@ async function historyPage(rc: RequestContext): Promise<WebResponse> {
                 : ""}
             </h3>
             <p class="muted">
-              Approved by ${nameOf(names, version.approvedBy)} on
-              ${version.approvedAt}
-              ${seesProposals
-                ? html`·
-                    <a href="/proposals/${version.proposalId}"
-                      >review record</a
-                    >`
-                : ""}
+              ${metaLine(html`Approved by ${nameOf(names, version.approvedBy)} on ${version.approvedAt}${seesProposals
+                ? html` · <a href="/proposals/${version.proposalId}">review record</a>`
+                : ""}`)}
             </p>
             ${version.readable
               ? html`<p><strong>${version.title}</strong></p>

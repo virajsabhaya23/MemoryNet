@@ -298,7 +298,7 @@ test("viewing role assignments needs an administrator", async () => {
       "Synthetic Alpha Contributor:contributor",
       "Synthetic Alpha Reader:reader",
       "Synthetic Alpha Reviewer:reviewer",
-      "Synthetic Copilot Agent:contributor",
+      "Synthetic Coding Agent:contributor",
     ],
   );
 });

@@ -581,8 +581,8 @@ export async function definitionsSummary(
       Each one says what it is responsible for, is owned by a person, and
       changes only through review.
     </p>
-    <p>
-      <a href="${definitionsPath(scope)}">See and propose definitions</a> ·
+    <p class="link-row">
+      <a href="${definitionsPath(scope)}">See and propose definitions</a>
       <a href="${networkPath(organizationId, { focus: scope })}"
         >Open the network</a
       >

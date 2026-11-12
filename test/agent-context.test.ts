@@ -6,8 +6,11 @@ import { test } from "node:test";
 import { z } from "zod";
 import { parseAgentBinding, readAgentBindingFile, writeAgentBindingFile, type AgentBinding } from "../src/agent-context/binding.ts";
 import { AGENT_CONTRACT_SCHEMAS, AgentContextSchema, AgentQuerySchema, AGENT_CONTEXT_PATH } from "../src/agent-context/contract.ts";
-import { getAgentContext } from "../src/agent-context/service.ts";
-import { createContext, ForbiddenError, ValidationError } from "../src/index.ts";
+import { getAgentContext, getAgentTaskContext, revalidateAgentReceipt } from "../src/agent-context/service.ts";
+import {
+  approveDefinitionProposal, approveProposal, createContext, ForbiddenError, proposeChange, proposeDefinition, proposeDefinitionChange,
+  proposeDefinitionRetirement, proposeMemory, ValidationError,
+} from "../src/index.ts";
 import { createContextBridge } from "../src/mcp/bridge.ts";
 import { createApp } from "../src/web/app.ts";
 import { buildWorld, START, useTestDatabase } from "./helpers.ts";
@@ -113,7 +116,7 @@ test("revalidation hides foreign receipts, refuses expired authority and keeps e
   const { revalidateAgentReceipt } = await import("../src/agent-context/service.ts");
   const received = await getAgentContext(env.ctx, b, { query: "controlled" });
   const query = { retrievalId: received.retrievalId };
-  assert.deepEqual(await revalidateAgentReceipt(env.ctx, b, query), { status: "UNKNOWN", items: [] });
+  assert.deepEqual(await revalidateAgentReceipt(env.ctx, b, query), { status: "UNKNOWN", items: [], definitions: [] });
   const denied = await revalidateAgentReceipt(env.ctx, { ...b, branch: "unrelated" }, query).catch(e => e);
   assert.ok(denied instanceof ForbiddenError);
   await assert.rejects(revalidateAgentReceipt(env.ctx, { ...b, expiresAt: START.toISOString() }, query), ForbiddenError);
@@ -134,4 +137,42 @@ test("revalidation hides foreign receipts, refuses expired authority and keeps e
   await suspendMemory(env.ctx, w.people.reviewer.id, { memoryId: m.id, expectedRevision: 1, reason: "Fixture review" });
   await reinstateMemory(env.ctx, w.people.reviewer.id, { memoryId: m.id, expectedRevision: 1, reason: "Fixture rechecked" });
   assert.deepEqual((await check()).items[0]?.reasons, ["lifecycle_changed"]);
+});
+
+test("revalidation reports a delivered definition that changed, was retired or whose basis changed after delivery", async () => {
+  const w = await buildWorld(env.ctx), b = binding(w);
+  const proposed = await proposeMemory(env.ctx, w.people.contributor.id, { projectId: b.projectId, type: "decision", title: "Sessions use signed cookies",
+    content: "Synthetic: sessions live in HttpOnly cookies.", evidenceSourceIds: [w.sources.alpha.id], applicability: { repositoryId: "1001", branch: "main", validFrom: START } });
+  const basis = await approveProposal(env.ctx, w.people.reviewer.id, { proposalId: proposed.id, expectedRevision: 1 });
+  const content = { name: "Session handling rule", purpose: "Synthetic purpose.", responsibilities: ["Synthetic duty"], links: [{ relation: "based_on" as const, targetId: basis.id }] };
+  const approve = (proposal: { id: string; revision: number }) => approveDefinitionProposal(env.ctx, w.people.reviewer.id, { proposalId: proposal.id, expectedRevision: proposal.revision });
+  const rule = await approve(await proposeDefinition(env.ctx, w.people.contributor.id, { scope: { level: "project", id: b.projectId }, kind: "rule", ...content }));
+  const check = (retrievalId: string) => revalidateAgentReceipt(env.ctx, b, { retrievalId });
+  const pin = (pinnedRevision: number, observedRevision: number, reasons: string[]) => [{ definitionId: rule.id, pinnedRevision, observedRevision, reasons }];
+
+  const withDecision = await getAgentTaskContext(env.ctx, b, { task: "session cookies" });
+  assert.deepEqual(withDecision.items.map((item) => item.memoryId), [basis.id]);
+  assert.deepEqual(await check(withDecision.retrievalId), { status: "CURRENT", items: [{ memoryId: basis.id, pinnedRevision: 1, observedRevision: 1, reasons: [], replacement: null }], definitions: pin(1, 1, []) });
+  env.advance(1000);
+  await approve(await proposeDefinitionChange(env.ctx, w.people.contributor.id, { definitionId: rule.id, baseRevision: 1, ...content, instructions: "Synthetic: rotate keys." }));
+  const changed = await check(withDecision.retrievalId);
+  assert.equal(changed.status, "STALE", "a changed definition makes the receipt stale even when its decisions are current");
+  assert.deepEqual([changed.items[0]?.reasons, changed.definitions], [[], pin(1, 2, ["revision_changed"])]);
+
+  const definitionsOnly = await getAgentTaskContext(env.ctx, b, { task: "logging format" });
+  assert.deepEqual([definitionsOnly.outcome, definitionsOnly.definitions.map((d) => [d.revision, d.reviewNeeded])], ["no_results", [[2, false]]]);
+  assert.deepEqual(await check(definitionsOnly.retrievalId), { status: "UNKNOWN", items: [], definitions: pin(2, 2, []) }, "no decisions delivered stays unknown");
+  env.advance(1000);
+  const replace = await proposeChange(env.ctx, w.people.contributor.id, { memoryId: basis.id, expectedRevision: 1, kind: "replace", type: "decision",
+    title: "Sessions use server storage", content: "Synthetic: sessions live on the server.", evidenceSourceIds: [w.sources.alpha.id] });
+  const replacement = await approveProposal(env.ctx, w.people.reviewer.id, { proposalId: replace.id, expectedRevision: 1 });
+  assert.deepEqual(await check(definitionsOnly.retrievalId), { status: "STALE", items: [], definitions: pin(2, 2, ["basis_changed"]) });
+
+  env.advance(1000);
+  const flagged = await getAgentTaskContext(env.ctx, b, { task: "logging format" });
+  assert.deepEqual(flagged.definitions.map((d) => [d.reviewNeeded, d.basedOn]), [[true, [{ memoryId: basis.id, change: "superseded", replacedBy: replacement.id }]]]);
+  assert.deepEqual((await check(flagged.retrievalId)).definitions, pin(2, 2, []), "a basis that changed before delivery was already flagged");
+  await approve(await proposeDefinitionRetirement(env.ctx, w.people.contributor.id, { definitionId: rule.id, baseRevision: 2, reason: "Synthetic: replaced by server sessions" }));
+  assert.deepEqual(await check(flagged.retrievalId), { status: "STALE", items: [], definitions: pin(2, 3, ["revision_changed", "retired"]) });
+  assert.deepEqual((await getAgentTaskContext(env.ctx, b, { task: "logging format" })).definitions, [], "retired definitions are never delivered");
 });

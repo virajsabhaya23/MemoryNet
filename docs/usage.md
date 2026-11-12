@@ -34,7 +34,7 @@ The example also includes **Rhea Reviewer**, who can review Checkout proposals, 
 
 1. Switch to **Rhea Reviewer**, open **Review**, and select the proposal. Inspect the exact revision and evidence, then approve it. A human who authored any proposal revision cannot approve it.
 2. Switch to **Rudy Reader**, open Checkout, and search for `Synthetic retry limit`. The result includes the approved version and evidence. Open the record and **History** to inspect its review and versions.
-3. Open the organization's **Network** to inspect the record and its source connections. The map and search remain permission filtered.
+3. Open the organization's **Network** to inspect the record and its source connections. The map and search remain permission filtered. Each project or repository is its own cell; the **Details** panel opens on the brain registry (what is in the brain, what AI tools would get, what needs a person). While the map is open it checks for changes every 15 seconds: new or changed records ring blue for a few seconds and the name card says what changed. Press **R** to replay how the map grew, oldest records first.
 
 For coding-agent retrieval, use the [MCP setup and API contract](agent-context.md#mcp-and-authenticated-loopback-bridge). It requires an existing permitted agent, a private binding, and a scoped approved decision. The agent receives bounded context with version IDs and citations; a retrieval receipt records delivery rather than code compliance.
 
@@ -45,6 +45,17 @@ For coding-agent retrieval, use the [MCP setup and API contract](agent-context.m
 3. Record another synthetic source, PR `43`, with excerpt `Synthetic walkthrough update: retry a failed request at most one time.` Open the approved decision and choose **Propose a change → A new version of this memory**. Change its text to the one-retry rule and cite `pull/43` instead of `pull/42`.
 4. Switch to **Rhea**, inspect the proposed revision and approve it. Switch back to **Cody** and reopen **Affected work**. The original task now needs review, and its stale context cannot be exported.
 5. Inspect the decision history, update the task's spec and implementation, and run the target repository's checks. Create a fresh baseline explicitly and close the old tracked task when its follow-up is complete. See [Affected work](affected-work.md) for artifact reconciliation and export limits.
+
+## Brain recommendations
+
+A project's **Brain** panel lists **Recommendations**, and the Overview's **Needs you** counts them per project. They are computed only from records you can already read: approved decisions and definitions, outdated reports, and reviews. No model is involved and nothing changes by itself. The panel detects:
+
+- **Definition may be outdated**: an active agent, skill, instruction or rule is based on a decision that was revised, suspended, replaced or revoked after that definition version was approved.
+- **Reported as outdated more than once**: a current decision has two or more open outdated reports.
+- **Agent proposals keep being rejected**: within 180 days, reviewers rejected two or more agent proposals that would revise, replace or conflict with the same current decision. Only human contributors and above, who can see proposals, get this one.
+- **Conflicting decisions**: two current decisions in a project are linked as conflicting and can apply together now. Pairs scoped to different repositories or branches, or not both valid now, are skipped.
+
+Each recommendation links to existing pages: the decision, the definition's change form, or the agent's definition. Nothing changes until a person proposes the change and a different person approves it.
 
 ## Stop and preserve data
 
@@ -84,6 +95,6 @@ codex -c "$option" mcp get memorynet
 
 Launch Codex for the consumer with that same `-c "$option"` option when you intend to run a coding session. The inventory command above makes no model request. The installed Codex app server recognized the binding path and advertised all three read-only tools with an explicit override.
 
-Ask the agent to call `get_task_context` before changing code and save the returned `retrievalId`. Before finishing, call `revalidate_context` with that ID. A stale result identifies the pinned and observed revision and gives the reasons. Fetch fresh guidance and review the actual changes. An empty receipt or one created before lifecycle generations were recorded can return UNKNOWN. An error or denial is a failed check. CURRENT covers the delivered decisions only. Newly relevant decisions require a fresh query. **Affected work** separately lists tasks with explicitly declared pins and can refuse their stale exports.
+Ask the agent to call `get_task_context` before changing code and save the returned `retrievalId`. Before finishing, call `revalidate_context` with that ID. A stale result identifies the pinned and observed revision and gives the reasons. Fetch fresh guidance and review the actual changes. An empty receipt or one created before lifecycle generations were recorded can return UNKNOWN. An error or denial is a failed check. CURRENT describes the delivered decisions; delivered definitions that were revised, retired or whose based-on decision changed are listed separately in the check's definitions. Newly relevant decisions require a fresh query. **Affected work** separately lists tasks with explicitly declared pins and can refuse their stale exports.
 
 Discovery stops at checkout boundaries, depth three, 32 candidates, 4,096 workspace entries and 20,000 inspected Git entries. It supports regular SHA-1 checkouts with a committed named branch, loose or packed objects, root README/README.md and AGENTS.md, and Markdown directly in docs/adr, docs/decisions and docs/specs. Only the selected blob is imported, up to 64 KiB, with a 4,000-character excerpt and the SHA-256 of the full committed bytes. Its citation identifies the origin checkout, path and commit without disclosing its absolute path. Dot directories, common build, dependency and secret directories, links, worktree pointers, bare/alternate stores and detached heads are excluded or reported as unsupported.

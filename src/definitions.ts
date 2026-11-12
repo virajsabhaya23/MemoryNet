@@ -27,7 +27,7 @@ import {
   NotFoundError,
   ValidationError,
 } from "./errors.ts";
-import { readableMemories, type Memory } from "./knowledge.ts";
+import { readableMemories, readableMemoriesByIds, type Memory } from "./knowledge.ts";
 import { MINIMUM_ROLE, ROLE_RANK, roleForRank, type Role } from "./roles.ts";
 import {
   optionalText,
@@ -1486,6 +1486,53 @@ export async function readableDefinitions(
     ...definition,
     links: visibleLinks(definition.links, ids, memoryIds),
   }));
+}
+
+/**
+ * Definitions that guide work in one project, as the caller may see them: its organization's, its business
+ * unit's and the project's own, never another unit's or project's. Retired ones are included; callers filter.
+ * Links follow the caller's view, and the readable memories behind based_on links come back for freshness checks.
+ */
+export async function readableProjectDefinitions(
+  q: Queryable,
+  ctx: MemoryNetContext,
+  caller: Principal,
+  projectId: string,
+): Promise<{ definitions: Definition[]; linkedMemories: Memory[] }> {
+  const project = (
+    await q.query<{ organization_id: string; business_unit_id: string }>(
+      "SELECT organization_id, business_unit_id FROM projects WHERE id = $1",
+      [projectId],
+    )
+  ).rows[0];
+  if (!project) return { definitions: [], linkedMemories: [] };
+  const { rows } = await q.query<DefinitionRow>(
+    `${VISIBLE_DEFINITIONS_SQL} AND d.organization_id = $2
+       AND (d.business_unit_id IS NULL OR d.business_unit_id = $3::uuid)
+       AND (d.project_id IS NULL OR d.project_id = $4::uuid)
+     ORDER BY d.kind, lower(r.name), d.id`,
+    [caller.id, project.organization_id, project.business_unit_id, projectId],
+  );
+  const definitions = rows.map(mapDefinition);
+  const linkedMemories = await readableMemoriesByIds(
+    q,
+    ctx,
+    caller,
+    definitions.flatMap((definition) =>
+      definition.links
+        .filter((link) => link.relation === "based_on")
+        .map((link) => link.targetId),
+    ),
+  );
+  const definitionIds = new Set(definitions.map((definition) => definition.id));
+  const memoryIds = new Set(linkedMemories.map((memory) => memory.id));
+  return {
+    definitions: definitions.map((definition) => ({
+      ...definition,
+      links: visibleLinks(definition.links, definitionIds, memoryIds),
+    })),
+    linkedMemories,
+  };
 }
 
 /** Proposals in one organization that the caller may see, newest first. Readers and agents get none. */

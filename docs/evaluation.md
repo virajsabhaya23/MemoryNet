@@ -29,6 +29,24 @@ The source evidence, model responses and human approval actions are automated sy
 
 For live Meta extraction, use the app's [Decision Guard workflow](decision-guard.md) with explicitly selected public evidence. Its run page shows provider, model, reported tokens, latency and generation settings. The offline replay deliberately requires no API key.
 
+## Brain benchmark: what each retrieval path delivers
+
+`npm run eval:brain` is a synthetic behavior check. It makes no model or network calls, does not read your database, and does not measure agent correctness or effectiveness. It builds one organization in a fresh in-memory database through MemoryNet's own domain functions at a fixed clock, gives one agent principal four authentication tasks, and records what three retrieval paths hand that agent under the same budget (2,000 estimated tokens and 10 items per task). It writes `report.json` and `summary.md` to `.local/brain-benchmark/`, or to `--out DIRECTORY`.
+
+The fixture holds a JWT login decision replaced by a server-session decision that was later revised, a token-theft incident, a leadership constraint on browser-accessible credential storage (revised once), a reviewed `conflicts_with` pair, two rejected agent proposals that reintroduce JWT, one pending proposal, pull request evidence for each era, a payments project, an incident-response project the agent cannot read that holds a sensitive memory, an approved organization-wide security instruction, and a skill based on the replaced JWT decision.
+
+| Arm | Delivers |
+| --- | --- |
+| MemoryNet task context | `getTaskContext` as the agent for the identity project's repository and branch, including reviewed definitions when the response carries them. |
+| Permission-aware conventional RAG | IDF-weighted term overlap, with PostgreSQL English stemming, over everything the agent may read in the organization: pull request excerpts, every readable version of every memory and readable definitions, in 60-word chunks, top 10 within the budget. It has no notion of approval, versions or supersession. |
+| Ablation: RAG without permission filtering | The same retrieval over every record, proposals included, read with the owner's account. It sizes exposure risk and is not a fair competitor. |
+
+For each task and in total, the report counts expected current guidance delivered at its current version; stale text (superseded decisions or older versions); unapproved text (pending or rejected proposals, or raw pull request excerpts delivered as context rather than as citations); reviewed conflicts reported; delivered text, citations included, that the agent may not read; outdated skills delivered and how many were marked `reviewNeeded`; and estimated tokens (JSON characters / 4). A sensitivity line repeats the RAG arms filling the whole budget instead of stopping at 10 chunks. `test/brain-benchmark.test.ts` pins the fixture's results.
+
+What it shows: on this fixture, which records each path hands the agent. Task context returns only current, approved records the agent may read, with reviewed conflicts, and flags outdated skills when it serves definitions. The permission-aware baseline also returns superseded versions and raw evidence, and has no way to report a conflict. Without the permission filter, proposals and the restricted project's records appear.
+
+What it does not show: whether an agent would follow, ignore or be misled by any of it; code quality, productivity or effectiveness; how often such records occur in real organizations; or how embedding-based, reranked or status-filtered retrieval would behave. An index limited to current approved records would avoid stale and unapproved text by construction. It is not evidence of token savings either: task context returns the largest payload here, because it carries IDs, citations, reasons and notices. The fixture was built to contain the records it checks for, and its author chose each task's expected guidance.
+
 ## Historical observations, reviewed November 3, 2026
 
 The local lab contains earlier observations. Their reviewed public summary is [evaluation.json](../website/evaluation.json), including SHA-256 identifiers for the source reports. These results were inspected, not rerun as part of this change. Raw lab traces are not part of the public source distribution; the hashes identify the reviewed files rather than independently proving their contents.
