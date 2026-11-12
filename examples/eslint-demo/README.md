@@ -13,7 +13,7 @@ node examples/eslint-demo/verify.mjs
 node examples/eslint-demo/serve.ts
 ```
 
-Verification runs the actual pinned ESLint, confirms that the starting configuration fails, checks a scripted passing control, and rejects weakened lint policy and changed application behavior. These are evaluator controls, not new coding-agent results. They make no model requests.
+Verification runs the actual pinned ESLint, confirms that the starting configuration fails, checks a scripted passing control, and rejects weakened lint policy and changed application behavior. These are evaluator controls, not new coding-agent results. They make no model requests. The frozen consumer's `lint` script is POSIX (`ESLINT_USE_FLAT_CONFIG=false eslint src`); on Windows the harness runs the same pinned ESLint with the same environment directly, because `cmd.exe` cannot parse a `NAME=value` prefix, and the control still fails only if ESLint 10 itself rejects the retained `.eslintrc.cjs`.
 
 The app opens at [http://127.0.0.1:3062](http://127.0.0.1:3062). It creates its own database, binding, dispatch ledger, and evidence under ignored `.local/eslint-demo/`; it never uses the ordinary application database. Distribute the example source without generated local data.
 

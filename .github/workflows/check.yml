@@ -1,7 +1,10 @@
 name: Checks
 
+# Pull requests are checked once per commit. A push to a feature branch would otherwise
+# run the same four-job matrix a second time alongside that pull request.
 on:
   push:
+    branches: [main]
   pull_request:
 
 permissions:

@@ -19,12 +19,31 @@ const results = [];
 try {
   await cp(start, directory, { recursive: true, filter: (path) => !path.includes("node_modules") });
   await symlink(join(start, "node_modules"), join(directory, "node_modules"), "junction");
-  for (const [script, expected] of [["lint", 2], ["test", 0]]) {
-    const baseline = spawnSync("npm", ["run", script], { cwd: directory, encoding: "utf8", timeout: 30_000, shell: process.platform === "win32" });
-    assert.equal(baseline.error, undefined);
-    assert.equal(baseline.status, expected, `${script}: ${baseline.stdout}\n${baseline.stderr}`);
-    results.push({ name: `frozen npm run ${script}`, exitCode: baseline.status, expectedExitCode: expected });
-  }
+  // The frozen consumer's lint script is POSIX (`ESLINT_USE_FLAT_CONFIG=false eslint src`).
+  // cmd.exe cannot parse that form, so Windows runs the script's intent directly against the
+  // same pinned binary and environment; npm itself needs a shell there for its .cmd shim.
+  // Either way the start must fail because ESLint 10 refuses the retained eslintrc config,
+  // not because a shell could not parse the script.
+  const frozenLint = process.platform === "win32"
+    ? spawnSync(process.execPath, [join(directory, "node_modules/eslint/bin/eslint.js"), "src"], {
+        cwd: directory, encoding: "utf8", timeout: 30_000,
+        env: { ...process.env, ESLINT_USE_FLAT_CONFIG: "false" },
+      })
+    : spawnSync("npm", ["run", "lint"], { cwd: directory, encoding: "utf8", timeout: 30_000 });
+  assert.equal(frozenLint.error, undefined);
+  assert.equal(frozenLint.status, 2, `lint: ${frozenLint.stdout}\n${frozenLint.stderr}`);
+  assert.match(
+    `${frozenLint.stdout}\n${frozenLint.stderr}`,
+    /couldn't find an eslint\.config/i,
+    "the frozen consumer must fail because ESLint 10 requires flat configuration",
+  );
+  results.push({ name: "frozen npm run lint", exitCode: frozenLint.status, expectedExitCode: 2 });
+  const frozenTest = spawnSync("npm", ["run", "test"], {
+    cwd: directory, encoding: "utf8", timeout: 30_000, shell: process.platform === "win32",
+  });
+  assert.equal(frozenTest.error, undefined);
+  assert.equal(frozenTest.status, 0, `test: ${frozenTest.stdout}\n${frozenTest.stderr}`);
+  results.push({ name: "frozen npm run test", exitCode: frozenTest.status, expectedExitCode: 0 });
   const evaluate = (name, expected) => {
     const runResult = run(join(root, "scenario/oracle.mjs"), [directory]);
     assert.equal(runResult.error, undefined);
