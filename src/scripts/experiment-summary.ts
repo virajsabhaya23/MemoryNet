@@ -1,4 +1,4 @@
-// Prints a decision-reuse summary from recorded answers and maintenance-effort CSV files.
+// Prints the decision-reuse experiment summary from the facilitator's CSV files.
 // Usage: npm run experiment:summary -- answers.csv effort.csv [--expected-lookups 40]
 // --expected-lookups is the team's estimate, recorded before the sessions, of how often such questions come up.
 import { readFile } from "node:fs/promises";

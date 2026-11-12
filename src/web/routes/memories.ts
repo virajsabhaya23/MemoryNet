@@ -23,8 +23,10 @@ import { ROLE_RANK } from "../../roles.ts";
 import {
   badge,
   html,
+  metaLine,
   options,
   preview,
+  recordHead,
   table,
   type SafeHtml,
 } from "../html.ts";
@@ -52,6 +54,7 @@ import {
   type ProjectView,
 } from "../views.ts";
 import { applicabilityFromForm, applicabilityView, proposalStatusBadge, TYPE_HINTS } from "./knowledge.ts";
+import { relationFields, relationsFromForm, relationsView } from "../relations-view.ts";
 
 /** How a version came about, in plain words. */
 export function versionLabel(version: {
@@ -124,7 +127,8 @@ async function changeForm(
   });
   const people = await listProjectPeople(rc.ctx, user.id, view.project.id);
   const cited = new Set(memory.evidence.map((item) => item.sourceId));
-  return html`<details class="edit">
+  const relationBlock = await relationFields(rc, memory.projectId, memory.relations, memory.id);
+  return html`<details id="propose-change" class="edit">
     <summary>Propose a change</summary>
     <p class="hint">
       Builds on version ${memory.revision}. Nothing changes until a different
@@ -186,6 +190,7 @@ ${memory.content}</textarea
               </label>`,
           )}
         </fieldset>
+        ${relationBlock}
         <label
           >Owner
           <select name="ownerId" required>
@@ -278,58 +283,30 @@ async function memoryPage(rc: RequestContext): Promise<WebResponse> {
     </section>`);
   }
   const mayDismiss = human && rank >= ROLE_RANK.reviewer;
+  const relationsBlock = await relationsView(rc, memory.relations);
   return page(rc, {
     title: memory.title,
     crumbs: projectCrumbs(view),
-    body: html`<p>
-        ${memoryStatusBadge(memory.status)}
-        ${badge(typeLabel(memory.type), "type")}
-        <span class="muted">version ${memory.revision}</span>
-        <a href="/memories/${memory.id}/history">History</a>
-        ${memory.status === "approved"
-          ? html`<a
-              href="/orgs/${view.tree.organization
-                .id}/network?node=${encodeURIComponent(`memory:${memory.id}`)}"
-              >Show in the network</a
-            >`
-          : ""}
-      </p>
+    body: html`${recordHead({
+        kind: typeLabel(memory.type),
+        title: memory.title,
+        status: memoryStatusBadge(memory.status),
+        meta: html`Version ${memory.revision} · Owner ${nameOf(names, memory.ownerId)} · Approved by ${nameOf(names, memory.approvedBy)} on ${memory.approvedAt}`,
+        actions: html`<a class="key" href="/memories/${memory.id}/history">History</a>${memory.status === "approved" ? html` <a class="key" href="/orgs/${view.tree.organization.id}/network?node=${encodeURIComponent(`memory:${memory.id}`)}">Show in the network</a>` : ""}`,
+      })}
       ${statusNotice(history, names)}
-      ${applicabilityView(memory.applicability, rc.ctx.now())}
+      <div class="workspace-columns">
+      <div class="workspace-main">
       <section>
         <h2>${memory.status === "revoked" ? "Historical decision" : "Knowledge"}</h2>
         <p class="content">${memory.content}</p>
+        ${relationsBlock}
       </section>
       <section>
         <h2>Evidence</h2>
         ${evidenceList(memory.evidence)}
       </section>
-      <section>
-        <h2>Record</h2>
-        <dl class="facts">
-          <dt>Memory ID</dt>
-          <dd><code>${memory.id}</code> (never changes)</dd>
-          <dt>Project</dt>
-          <dd>
-            <a href="/projects/${view.project.id}">${view.project.name}</a>
-          </dd>
-          <dt>Owner</dt>
-          <dd>${nameOf(names, memory.ownerId)}</dd>
-          <dt>Version ${memory.revision} proposed by</dt>
-          <dd>${nameOf(names, memory.proposedBy)}</dd>
-          <dt>Approved by</dt>
-          <dd>${nameOf(names, memory.approvedBy)} on ${memory.approvedAt}</dd>
-          <dt>Review record</dt>
-          <dd>
-            ${seesProposals
-              ? html`<a href="/proposals/${memory.proposalId}">proposal</a>
-                  (version ${memory.proposalRevision} approved)`
-              : html`<span class="muted"
-                  >visible to contributors and above</span
-                >`}
-          </dd>
-        </dl>
-      </section>
+      ${applicabilityView(memory.applicability, rc.ctx.now())}
       ${seesProposals
         ? html`<section>
             <h2>Pending changes</h2>
@@ -371,10 +348,40 @@ async function memoryPage(rc: RequestContext): Promise<WebResponse> {
           "No open reports.",
         )}
       </section>
-      ${actions}
       ${changeable && rank >= ROLE_RANK.contributor
         ? await changeForm(rc, history, view)
-        : ""}`,
+        : ""}
+      </div>
+      <aside class="workspace-side" aria-label="Record and actions">
+      <section>
+        <h2>Record</h2>
+        <dl class="facts">
+          <dt>Memory ID</dt>
+          <dd><code>${memory.id}</code> (never changes)</dd>
+          <dt>Project</dt>
+          <dd>
+            <a href="/projects/${view.project.id}">${view.project.name}</a>
+          </dd>
+          <dt>Owner</dt>
+          <dd>${nameOf(names, memory.ownerId)}</dd>
+          <dt>Version ${memory.revision} proposed by</dt>
+          <dd>${nameOf(names, memory.proposedBy)}</dd>
+          <dt>Approved by</dt>
+          <dd>${nameOf(names, memory.approvedBy)} on ${memory.approvedAt}${memory.approvals > 1 ? ` · ${memory.approvals} different reviewers approved this version` : ""}</dd>
+          <dt>Review record</dt>
+          <dd>
+            ${seesProposals
+              ? html`<a href="/proposals/${memory.proposalId}">proposal</a>
+                  (version ${memory.proposalRevision} approved)`
+              : html`<span class="muted"
+                  >visible to contributors and above</span
+                >`}
+          </dd>
+        </dl>
+      </section>
+      ${actions}
+      </aside>
+      </div>`,
   });
 }
 
@@ -443,14 +450,9 @@ async function historyPage(rc: RequestContext): Promise<WebResponse> {
                 : ""}
             </h3>
             <p class="muted">
-              Approved by ${nameOf(names, version.approvedBy)} on
-              ${version.approvedAt}
-              ${seesProposals
-                ? html`·
-                    <a href="/proposals/${version.proposalId}"
-                      >review record</a
-                    >`
-                : ""}
+              ${metaLine(html`Approved by ${nameOf(names, version.approvedBy)} on ${version.approvedAt}${seesProposals
+                ? html` · <a href="/proposals/${version.proposalId}">review record</a>`
+                : ""}`)}
             </p>
             ${version.readable
               ? html`<p><strong>${version.title}</strong></p>
@@ -555,6 +557,7 @@ async function changeAction(rc: RequestContext): Promise<WebResponse> {
   }
   const ownerId = formValue(rc, "ownerId");
   const applicability = applicabilityFromForm(rc);
+  const relations = relationsFromForm(rc);
   const proposal = await proposeChange(rc.ctx, user.id, {
     memoryId: rc.params.id ?? "",
     expectedRevision: expectedRevision(rc),
@@ -565,6 +568,7 @@ async function changeAction(rc: RequestContext): Promise<WebResponse> {
     evidenceSourceIds,
     ...(ownerId === undefined ? {} : { ownerId }),
     ...(applicability === undefined ? {} : { applicability }),
+    ...(relations === undefined ? {} : { relations }),
   });
   return user.kind === "agent"
     ? redirect(`/memories/${rc.params.id ?? ""}`, "proposed-by-agent")

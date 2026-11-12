@@ -1,12 +1,14 @@
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
-import { mkdtemp, readFile, rm, stat, symlink, writeFile } from "node:fs/promises";
-import { tmpdir } from "node:os";
+import { mkdir, mkdtemp, readFile, realpath, rm, stat, symlink, writeFile } from "node:fs/promises";
+import { hostname, tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
 import { backupDatabase, restoreDatabase } from "../src/database-backup.ts";
+import { lockDatabase } from "../src/database-lock.ts";
 import { resetDatabase } from "../src/database-reset.ts";
-import { migrate, openDatabase } from "../src/db.ts";
+import { openMigratedDatabase } from "../src/database-upgrade.ts";
+import { migrate, migrationFiles, openDatabase } from "../src/db.ts";
 import { createContext, getMemory, getProposal } from "../src/index.ts";
 import { buildWorld } from "./helpers.ts";
 
@@ -32,6 +34,97 @@ test("database ownership excludes other processes and symlink aliases, and relea
     const reopened = await openDatabase(directory);
     await reopened.close();
     await reopened.close();
+  } finally { await rm(root, { recursive: true, force: true }); }
+});
+
+async function stoppedPid(): Promise<number> {
+  const child = spawn(process.execPath, ["-e", ""], { stdio: "ignore" });
+  await new Promise((resolve, reject) => { child.once("error", reject); child.once("exit", resolve); });
+  return child.pid!;
+}
+
+test("a lock left by a stopped process on this computer is reclaimed; live, foreign and unreadable locks are not", async (t) => {
+  const root = await mkdtemp(join(tmpdir(), "memorynet-stale-lock-"));
+  const directory = join(root, "data");
+  await mkdir(directory);
+  const lock = `${await realpath(directory)}.memorynet-lock`;
+  const plant = async (owner: object | null) => {
+    await rm(lock, { recursive: true, force: true });
+    await mkdir(lock);
+    if (owner) await writeFile(join(lock, "owner.json"), JSON.stringify({ createdAt: "2026-11-02T22:47:22.584Z", ...owner }));
+  };
+  const owner = async () => JSON.parse(await readFile(join(lock, "owner.json"), "utf8"));
+  const warn = t.mock.method(console, "warn", () => {});
+  try {
+    const dead = await stoppedPid();
+    for (const host of [hostname(), `${hostname().split(".")[0]}.another-network.example`]) {
+      await plant({ pid: dead, hostname: host });
+      const release = await lockDatabase(directory);
+      assert.equal((await owner()).pid, process.pid);
+      await release();
+      await assert.rejects(stat(lock), { code: "ENOENT" });
+    }
+    assert.match(String(warn.mock.calls[0]?.arguments[0]), new RegExp(`left by PID ${dead}, which is no longer running`));
+
+    // The real app path recovers too, so a crash no longer keeps MemoryNet from starting.
+    await plant({ pid: dead, hostname: hostname() });
+    await (await openDatabase(directory)).close();
+
+    await plant({ pid: process.pid, hostname: hostname() });
+    await assert.rejects(lockDatabase(directory), new RegExp(`Database is locked \\(PID ${process.pid} on `));
+    await plant({ pid: dead, hostname: "another-computer" });
+    await assert.rejects(lockDatabase(directory), /Database is locked \(PID \d+ on another-computer\)/);
+    await plant(null);
+    await assert.rejects(lockDatabase(directory), /Database is locked \(unknown owner\)/);
+    await plant({ pid: dead, hostname: hostname() });
+    await mkdir(`${lock}.reclaim`);
+    await assert.rejects(lockDatabase(directory), /Another process is recovering this lock/);
+    assert.equal((await owner()).pid, dead, "a refused lock is left exactly as found");
+  } finally { await rm(root, { recursive: true, force: true }); }
+});
+
+test("an existing database is backed up before an upgrade; new and current databases are not", async (t) => {
+  t.mock.method(console, "log", () => {});
+  const root = await mkdtemp(join(tmpdir(), "memorynet-upgrade-"));
+  const directory = join(root, "data");
+  try {
+    // An older version applied one migration this checkout no longer lists; every current file is pending.
+    const old = await openDatabase(directory);
+    await old.exec("CREATE TABLE schema_migrations (name text PRIMARY KEY, applied_at timestamptz NOT NULL DEFAULT now())");
+    await old.query("INSERT INTO schema_migrations (name) VALUES ('000_previous.sql')");
+    await old.close();
+
+    const now = new Date("2026-11-03T18:57:47.000Z");
+    const upgraded = await openMigratedDatabase(directory, { backup: true, now });
+    try {
+      assert.deepEqual(upgraded.applied, await migrationFiles());
+      assert.equal(upgraded.backup, join(`${await realpath(directory)}.backups`, `2026-11-03T18-57-47-000Z-before-${upgraded.applied[0]!.replace(".sql", "")}`));
+    } finally { await upgraded.db.close(); }
+
+    // The snapshot is the database as it was before the upgrade, and restores with the normal command.
+    const restored = await restoreDatabase(upgraded.backup!, join(root, "restored"));
+    const before = await openDatabase(restored);
+    try {
+      assert.deepEqual((await before.query<{ name: string }>("SELECT name FROM schema_migrations")).rows.map((r) => r.name), ["000_previous.sql"]);
+    } finally { await before.close(); }
+
+    const current = await openMigratedDatabase(directory, { backup: true });
+    await current.db.close();
+    assert.deepEqual([current.applied, current.backup], [[], null]);
+    const fresh = await openMigratedDatabase(join(root, "fresh"), { backup: true });
+    await fresh.db.close();
+    assert.equal(fresh.backup, null);
+    assert.ok(fresh.applied.length > 0);
+
+    const skipped = join(root, "skipped");
+    const legacy = await openDatabase(skipped);
+    await legacy.exec("CREATE TABLE schema_migrations (name text PRIMARY KEY)");
+    await legacy.query("INSERT INTO schema_migrations (name) VALUES ('000_previous.sql')");
+    await legacy.close();
+    const optedOut = await openMigratedDatabase(skipped, { backup: false });
+    await optedOut.db.close();
+    assert.equal(optedOut.backup, null);
+    await assert.rejects(stat(`${await realpath(skipped)}.backups`), { code: "ENOENT" });
   } finally { await rm(root, { recursive: true, force: true }); }
 });
 

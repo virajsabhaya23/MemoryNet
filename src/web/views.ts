@@ -9,7 +9,7 @@ import {
 } from "../organizations.ts";
 import { ROLE_RANK, type PrincipalKind, type Role } from "../roles.ts";
 import { requireId } from "../validation.ts";
-import { badge, externalLink, html, join, type SafeHtml } from "./html.ts";
+import { badge, externalLink, html, join, metaLine, type SafeHtml } from "./html.ts";
 import { requireUser, type RequestContext } from "./kit.ts";
 
 export function scopePath(scope: ScopeRef): string {
@@ -115,6 +115,7 @@ const FLAG_LABELS: Readonly<Record<ContentFlag, string>> = {
   secret_removed: "secret removed",
   personal_data: "possible personal data",
   truncated: "shortened",
+  instruction_like: "instruction-like text",
 };
 
 export function flagBadges(flags: readonly ContentFlag[]): SafeHtml {
@@ -156,8 +157,7 @@ export function evidenceList(evidence: readonly Evidence[]): SafeHtml {
           <p>
             ${externalLink(item.url, item.reference)}
             <small
-              >commit ${shortSha(item.revision)} · captured
-              ${item.capturedAt}</small
+              >${metaLine(html`commit ${shortSha(item.revision)} · captured ${item.capturedAt}`)}</small
             >
             ${flagBadges(item.flags)}
             <a href="/sources/${item.sourceId}">source record</a>

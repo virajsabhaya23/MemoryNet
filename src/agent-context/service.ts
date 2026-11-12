@@ -1,32 +1,66 @@
-import { requireCaller } from "../access.ts";
+import { requireCaller, requireRole, resolveScope, type Principal } from "../access.ts";
 import type { MemoryNetContext } from "../context.ts";
-import type { Database, Queryable } from "../db.ts";
-import { ForbiddenError, ValidationError } from "../errors.ts";
+import type { Queryable } from "../db.ts";
+import { ForbiddenError, NotFoundError, ValidationError } from "../errors.ts";
+import { decisionPinIssues } from "../work.ts";
+import { accessFreshSince, inTransaction } from "../context.ts";
+import { ReceiptQuerySchema, type ReceiptCheck } from "./contract.ts";
+import { basedOnChanges } from "../definition-freshness.ts";
+import { readableProjectDefinitions } from "../definitions.ts";
+import { findReadableMemory, requireDecisionApplicabilityAccess } from "../knowledge.ts";
+import { reportOutdated } from "../history.ts";
+import { getMemory, proposeChange, proposeMemory, recordSource } from "../knowledge.ts";
+import { requireAgentProposalAllowed } from "../policy.ts";
 import { getContext } from "../retrieval.ts";
-import { parseAgentBinding, type AgentBinding } from "./binding.ts";
-import { AgentContextSchema, AgentQuerySchema, type AgentContextResponse } from "./contract.ts";
+import { getTaskContext } from "../task-context.ts";
+import { bindingCapabilities, bindingOwner, parseAgentBinding, type AgentBinding, type AgentCapability } from "./binding.ts";
+import {
+  AgentContextSchema,
+  AgentProposalReceiptSchema,
+  AgentProposeSchema,
+  AgentQuerySchema,
+  AgentReportReceiptSchema,
+  AgentReportSchema,
+  AgentTaskContextV3Schema,
+  AgentTaskQuerySchema,
+  type AgentContextResponse,
+  type AgentProposalReceipt,
+  type AgentReportReceipt,
+  type AgentTaskContextResponse,
+} from "./contract.ts";
 
-function inTransaction(ctx: MemoryNetContext, tx: Queryable): MemoryNetContext {
-  const now = ctx.now();
-  const db: Database = { query: (sql, params) => tx.query(sql, params), exec: (sql) => tx.exec(sql),
-    transaction: (fn) => fn(tx), async close() { throw new Error("Transaction cannot close database"); } };
-  return { ...ctx, db, now: () => new Date(now) };
+/** Every agent request: a valid, unexpired binding that grants this capability. Never reveals the token. */
+function authorize(ctx: MemoryNetContext, rawBinding: AgentBinding, capability: AgentCapability, input: unknown): AgentBinding {
+  const binding = parseAgentBinding(rawBinding);
+  if (JSON.stringify(input ?? null).includes(binding.token)) throw new ValidationError("Invalid agent request");
+  if (Date.parse(binding.expiresAt) <= ctx.now().getTime()) throw new ForbiddenError("Local agent binding expired");
+  if (!bindingCapabilities(binding).includes(capability)) throw new ForbiddenError("This binding does not allow that action");
+  return binding;
+}
+
+async function requireAgent(q: Queryable, binding: AgentBinding): Promise<Principal> {
+  const caller = await requireCaller(q, binding.principalId);
+  if (caller.kind !== "agent") throw new ForbiddenError("Context binding requires an agent principal");
+  return caller;
+}
+
+function withheldIfCredential<T>(binding: AgentBinding, response: T): T {
+  if (JSON.stringify(response).includes(binding.token)) throw new ValidationError("Credential-like context withheld");
+  return response;
 }
 
 /** Server/operator binding supplies every authority parameter; callers can only search and bound size. */
 export async function getAgentContext(ctx: MemoryNetContext, rawBinding: AgentBinding, rawInput: unknown): Promise<AgentContextResponse> {
-  const binding = parseAgentBinding(rawBinding);
   const input = AgentQuerySchema.safeParse(rawInput);
-  if (!input.success || input.data.query.includes(binding.token)) throw new ValidationError("Invalid context query");
-  if (Date.parse(binding.expiresAt) <= ctx.now().getTime()) throw new ForbiddenError("Local agent binding expired");
+  const binding = authorize(ctx, rawBinding, "context", rawInput);
+  if (!input.success) throw new ValidationError("Invalid context query");
   return ctx.db.transaction(async (tx) => {
     await tx.exec("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ");
     const scoped = inTransaction(ctx, tx);
-    const caller = await requireCaller(tx, binding.principalId);
-    if (caller.kind !== "agent") throw new ForbiddenError("Context binding requires an agent principal");
+    const caller = await requireAgent(tx, binding);
     const result = await getContext(scoped, caller.id, { ...input.data, projectId: binding.projectId,
       applicability: { repositoryId: binding.repositoryId, branch: binding.branch }, currentOnly: true });
-    const response = AgentContextSchema.parse({ schemaVersion: 1,
+    return withheldIfCredential(binding, AgentContextSchema.parse({ schemaVersion: 1,
       scope: { projectId: binding.projectId, repositoryId: binding.repositoryId, branch: binding.branch },
       retrievalId: result.retrievalId, retrievedAt: result.retrievedAt.toISOString(),
       outcome: result.outcome, moreMatches: result.moreMatches,
@@ -38,8 +72,187 @@ export async function getAgentContext(ctx: MemoryNetContext, rawBinding: AgentBi
         citations: memory.citations.map((c) => ({ sourceId: c.sourceId, reference: c.reference, url: c.url,
           revision: c.revision, excerpt: c.excerpt, shortened: c.shortened })), moreCitations: memory.moreCitations,
       })),
+    }));
+  });
+}
+
+/** Task context in the binding's exact project, repository and branch, at the current time. */
+export async function getAgentTaskContext(ctx: MemoryNetContext, rawBinding: AgentBinding, rawInput: unknown): Promise<AgentTaskContextResponse> {
+  const input = AgentTaskQuerySchema.safeParse(rawInput);
+  const binding = authorize(ctx, rawBinding, "context", rawInput);
+  if (!input.success) throw new ValidationError("Invalid task context query");
+  return ctx.db.transaction(async (tx) => {
+    await tx.exec("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ");
+    const scoped = inTransaction(ctx, tx);
+    const caller = await requireAgent(tx, binding);
+    const result = await getTaskContext(scoped, caller.id, { ...input.data, projectId: binding.projectId,
+      applicability: { repositoryId: binding.repositoryId, branch: binding.branch } });
+    return withheldIfCredential(binding, AgentTaskContextV3Schema.parse({ schemaVersion: 3,
+      scope: { projectId: binding.projectId, repositoryId: binding.repositoryId, branch: binding.branch },
+      retrievalId: result.retrievalId, retrievedAt: result.retrievedAt.toISOString(), outcome: result.outcome,
+      items: result.items.map((item) => ({
+        memoryId: item.memoryId, revision: item.revision, type: item.type, title: item.title, content: item.content,
+        shortened: item.shortened, compact: item.compact, approvedBy: item.approvedBy, approvedAt: item.approvedAt.toISOString(),
+        approvals: item.approvals, score: item.score, reasons: item.reasons, paths: item.paths,
+        citations: item.citations.map((c) => ({ sourceId: c.sourceId, reference: c.reference, url: c.url, revision: c.revision,
+          excerpt: c.excerpt, shortened: c.shortened, flags: c.flags })),
+        moreCitations: item.moreCitations,
+      })),
+      conflicts: result.conflicts, moreConflicts: result.moreConflicts,
+      changedDependencies: result.changedDependencies, moreChangedDependencies: result.moreChangedDependencies,
+      omitted: result.omitted, budget: result.budget,
+      // Never forward owners, flags, links to other definitions or internal role metadata.
+      definitions: result.definitions.map((d) => ({
+        definitionId: d.definitionId, revision: d.revision, kind: d.kind, name: d.name, purpose: d.purpose,
+        responsibilities: d.responsibilities, instructions: d.instructions, shortened: d.shortened, boundaries: d.boundaries,
+        appliesTo: d.appliesTo, scope: { level: d.scope.level, id: d.scope.id }, approvedBy: d.approvedBy,
+        approvedAt: d.approvedAt.toISOString(), compact: d.compact, reasons: d.reasons, basedOn: d.basedOn, reviewNeeded: d.reviewNeeded,
+      })),
+      moreDefinitions: result.moreDefinitions,
+    }));
+  });
+}
+
+/** The memory must be readable and govern exactly the binding's repository and branch. */
+async function scopedMemory(ctx: MemoryNetContext, caller: Principal, binding: AgentBinding, memoryId: string) {
+  const memory = await getMemory(ctx, caller.id, memoryId).catch((error: unknown) => {
+    if (error instanceof NotFoundError) return null;
+    throw error;
+  });
+  const scope = memory?.applicability;
+  if (!memory || memory.projectId !== binding.projectId || !scope || scope.repositoryId !== binding.repositoryId || scope.branch !== binding.branch) {
+    throw new NotFoundError("Memory not found in this binding's scope");
+  }
+  return memory;
+}
+
+/**
+ * Submits a pending proposal for human review, scoped to the binding's repository and branch, owned by the
+ * person accountable for the binding. Pull request evidence is recorded as sources captured by the agent.
+ * Agents cannot approve, and the project policy may turn agent proposals off or limit how many wait.
+ */
+export async function proposeAgentMemory(ctx: MemoryNetContext, rawBinding: AgentBinding, rawInput: unknown): Promise<AgentProposalReceipt> {
+  const parsed = AgentProposeSchema.safeParse(rawInput);
+  const binding = authorize(ctx, rawBinding, "propose", rawInput);
+  if (!parsed.success) throw new ValidationError("Invalid proposal: give a type, title, content and at least one source or pull request");
+  const input = parsed.data;
+  const ownerId = bindingOwner(binding)!;
+  // One transaction: a refused proposal leaves no evidence records behind.
+  return ctx.db.transaction(async (tx) => {
+    const scoped = inTransaction(ctx, tx);
+    const caller = await requireAgent(tx, binding);
+    await requireAgentProposalAllowed(tx, caller.id, binding.projectId);
+    const target = input.change ? await scopedMemory(scoped, caller, binding, input.change.memoryId) : null;
+    // For a change, an omitted paths/links field keeps the decision's current reviewed value;
+    // an explicit list (even empty) replaces it. New proposals start from empty.
+    const relations = input.paths === undefined && input.links === undefined ? undefined
+      : target
+        ? { paths: input.paths ?? target.relations.paths, links: input.links ?? target.relations.links }
+        : { paths: input.paths ?? [], links: input.links ?? [] };
+    const recorded: string[] = [];
+    if (input.evidence.pullRequests?.length) {
+      const connection = (await tx.query<{ full_name: string }>(
+        `SELECT full_name FROM repository_connections WHERE project_id = $1 AND provider = 'github'
+           AND external_repository_id = $2 AND disconnected_at IS NULL`,
+        [binding.projectId, binding.repositoryId],
+      )).rows[0];
+      if (!connection) throw new NotFoundError("The bound repository is not connected to the project");
+      for (const pull of input.evidence.pullRequests) {
+        const source = await recordSource(scoped, caller.id, { projectId: binding.projectId, provider: "github",
+          externalRepositoryId: binding.repositoryId, reference: `pull/${pull.number}`,
+          url: `https://github.com/${connection.full_name}/pull/${pull.number}`, excerpt: pull.excerpt,
+          ...(pull.commit === undefined ? {} : { revision: pull.commit }) });
+        recorded.push(source.id);
+      }
+    }
+    const evidenceSourceIds = [...new Set([...(input.evidence.sourceIds ?? []), ...recorded])];
+    const proposal = target && input.change
+      ? await proposeChange(scoped, caller.id, { memoryId: target.id, expectedRevision: input.change.revision, kind: input.change.kind,
+          type: input.type, title: input.title, content: input.content, evidenceSourceIds, ownerId, ...(relations ? { relations } : {}) })
+      : await proposeMemory(scoped, caller.id, { projectId: binding.projectId, type: input.type, title: input.title, content: input.content,
+          evidenceSourceIds, ownerId, ...(relations ? { relations } : {}),
+          applicability: { repositoryId: binding.repositoryId, branch: binding.branch, validFrom: scoped.now().toISOString() } });
+    return withheldIfCredential(binding, AgentProposalReceiptSchema.parse({ schemaVersion: 1, proposalId: proposal.id, revision: 1,
+      status: "pending", reviewPath: `/proposals/${proposal.id}`, flags: proposal.flags, recordedSourceIds: recorded }));
+  });
+}
+
+/** Reports a scoped memory as possibly outdated. A report changes nothing until a person acts on it. */
+export async function reportAgentMemory(ctx: MemoryNetContext, rawBinding: AgentBinding, rawInput: unknown): Promise<AgentReportReceipt> {
+  const parsed = AgentReportSchema.safeParse(rawInput);
+  const binding = authorize(ctx, rawBinding, "report", rawInput);
+  if (!parsed.success) throw new ValidationError("Invalid report: give a memory ID and a reason");
+  const caller = await requireAgent(ctx.db, binding);
+  await scopedMemory(ctx, caller, binding, parsed.data.memoryId);
+  const report = await reportOutdated(ctx, caller.id, parsed.data);
+  return AgentReportReceiptSchema.parse({ schemaVersion: 1, reportId: report.id, memoryId: report.memoryId, revision: report.revision, status: "open" });
+}
+
+/** Compare only the approved items and definitions actually delivered to this principal, project, repository and branch.
+ * Fail closed for the entire receipt if either historical evidence or current authority is unreadable. */
+export async function revalidateAgentReceipt(ctx: MemoryNetContext, rawBinding: AgentBinding, input: unknown): Promise<ReceiptCheck> {
+  const binding = authorize(ctx, rawBinding, "context", input);
+  const parsed = ReceiptQuerySchema.safeParse(input);
+  if (!parsed.success) throw new ValidationError("Invalid retrieval ID");
+  return ctx.db.transaction(async tx => {
+    await tx.exec("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ");
+    const scoped = inTransaction(ctx, tx), caller = await requireAgent(tx, binding);
+    const now = scoped.now();
+    await requireRole(tx, caller, await resolveScope(tx, { level: "project", id: binding.projectId }), "reader", "check a context receipt");
+    const refuse = () => new ForbiddenError("Receipt unavailable in this scope");
+    await requireDecisionApplicabilityAccess(tx, scoped, caller, binding.projectId, {
+      repositoryId: binding.repositoryId, branch: binding.branch, validFrom: now, validUntil: null,
     });
-    if (JSON.stringify(response).includes(binding.token)) throw new ValidationError("Credential-like context withheld");
-    return response;
+    const id = parsed.data.retrievalId;
+    const receipt = (await tx.query<{ outcome: string; retrieved_at: Date }>(`SELECT outcome, retrieved_at FROM retrievals
+      WHERE id=$1 AND caller_id=$2 AND project_id=$3 AND applicability->>'repositoryId'=$4 AND applicability->>'branch'=$5`,
+      [id, caller.id, binding.projectId, binding.repositoryId, binding.branch])).rows[0];
+    if (!receipt) throw refuse();
+    const pins = (await tx.query<{ memory_id: string; revision: number; status_generation: number | null; denied: boolean }>(
+      `SELECT ri.memory_id, ri.revision, CASE WHEN ri.generation_sealed THEN ri.status_generation END AS status_generation, EXISTS (
+        SELECT 1 FROM memory_evidence me WHERE me.memory_id=ri.memory_id AND me.revision=ri.revision
+        AND NOT EXISTS (SELECT 1 FROM source_read_access a WHERE a.source_id=me.source_id
+          AND a.principal_id=$2 AND a.access_observed_at >= $3)) AS denied
+       FROM retrieval_items ri WHERE ri.retrieval_id=$1 AND ri.status='approved' ORDER BY ri.position`,
+      [id, caller.id, accessFreshSince(scoped)])).rows;
+    if (pins.some(pin => pin.denied)) throw refuse();
+    const items: ReceiptCheck["items"] = [];
+    let unknown = !pins.length || receipt.outcome !== "results";
+    for (const pin of pins) {
+      const memory = await findReadableMemory(tx, scoped, caller, pin.memory_id);
+      if (!memory || memory.projectId !== binding.projectId) throw refuse();
+      // A newer revision can move to another readable branch. Never expose its revision across this binding.
+      if (!memory.applicability || memory.applicability.repositoryId !== binding.repositoryId || memory.applicability.branch !== binding.branch) throw refuse();
+      if (pin.status_generation === null) { unknown = true; continue; }
+      const reasons = decisionPinIssues(memory, { revision: pin.revision, statusGeneration: pin.status_generation }, binding, now);
+      let replacement = null;
+      if (memory.supersededBy) {
+        const m = await findReadableMemory(tx, scoped, caller, memory.supersededBy);
+        if (m && m.projectId === binding.projectId && decisionPinIssues(m, m, binding, now).length === 0) replacement = { memoryId: m.id, revision: m.revision };
+      }
+      items.push({ memoryId: memory.id, pinnedRevision: pin.revision, observedRevision: memory.revision, reasons, replacement });
+    }
+    const definitions: ReceiptCheck["definitions"] = [];
+    const delivered = (await tx.query<{ definition_id: string; revision: number }>(
+      "SELECT definition_id, revision FROM retrieval_definitions WHERE retrieval_id=$1 ORDER BY position", [id])).rows;
+    if (delivered.length) {
+      const current = await readableProjectDefinitions(tx, scoped, caller, binding.projectId);
+      const byId = new Map(current.definitions.map(definition => [definition.id, definition]));
+      const readable = new Map(current.linkedMemories.map(memory => [memory.id, memory]));
+      for (const pin of delivered) {
+        const definition = byId.get(pin.definition_id);
+        if (!definition) throw refuse();
+        const reasons: ReceiptCheck["definitions"][number]["reasons"] = [];
+        if (definition.revision !== pin.revision) reasons.push("revision_changed");
+        if (definition.status !== "active") reasons.push("retired");
+        // Only changes after delivery: a basis that had already changed was delivered marked reviewNeeded.
+        if (basedOnChanges(definition, readable).some(change => change.changedAt === null || change.changedAt.getTime() > receipt.retrieved_at.getTime())) {
+          reasons.push("basis_changed");
+        }
+        definitions.push({ definitionId: definition.id, pinnedRevision: pin.revision, observedRevision: definition.revision, reasons });
+      }
+    }
+    const stale = items.some(item => item.reasons.length) || definitions.some(definition => definition.reasons.length);
+    return { status: stale ? "STALE" : unknown ? "UNKNOWN" : "CURRENT", items, definitions };
   });
 }

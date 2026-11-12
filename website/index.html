@@ -1,82 +1,609 @@
 <!doctype html>
 <html lang="en">
+
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="description" content="MemoryNet keeps reviewed engineering decisions connected to their evidence, history, and affected work. Explore the local pilot for people and coding agents.">
-  <meta name="theme-color" content="#f7fafc">
-  <meta property="og:title" content="MemoryNet: connect decisions to your work.">
-  <meta property="og:description" content="Explore projects, decisions, owners, and evidence in one navigable network.">
+  <meta name="description"
+    content="MemoryNet is governed decision memory for AI coding agents: human-approved, scoped, cited context, and stale-work detection when decisions change.">
+  <meta name="theme-color" content="#15191c">
+  <meta property="og:title" content="MemoryNet: governed decision memory for coding agents">
+  <meta property="og:description"
+    content="Approve the decision. Give agents current context. Catch the work pinned to old guidance.">
   <meta property="og:type" content="website">
-  <title>MemoryNet: connect decisions to your work</title>
+  <title>MemoryNet: governed decision memory for coding agents</title>
   <link rel="icon" href="./assets/icon.svg" type="image/svg+xml">
-  <link rel="preload" href="./assets/familjen-grotesk-latin-variable.woff2" as="font" type="font/woff2" crossorigin>
-  <link rel="preload" href="./assets/ibm-plex-sans-latin-variable.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="preload" href="./assets/host-grotesk-latin-variable.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="preload" href="./assets/atkinson-hyperlegible-mono-latin-variable.woff2" as="font" type="font/woff2"
+    crossorigin>
   <link rel="stylesheet" href="./assets/styles.css">
   <script src="./assets/site.js" defer></script>
 </head>
+
 <body>
   <a class="skip-link" href="#main">Skip to content</a>
-  <header class="site-header container">
-    <a class="wordmark" href="./" aria-label="MemoryNet home"><img src="./assets/mark.svg" alt="" width="36" height="36">MemoryNet</a>
-    <button class="nav-toggle" type="button" aria-controls="main-navigation" aria-expanded="false" hidden>Menu</button>
-    <nav id="main-navigation" aria-label="Main navigation"><a href="#network-demo">Explore</a><a href="#workflow">How it works</a><a href="./guide.html">Documentation</a></nav>
-    <a class="source-link" href="https://github.com/virajsabhaya23/MemoryNet"><svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path d="M9 19c-4 1-4-2-6-2m12 5v-4c0-1 .1-2-.5-2.5C19 15 20 13 20 10a7 7 0 0 0-2-5 6 6 0 0 0-.1-4S16 1 12 3c-4-2-5.9-2-5.9-2A6 6 0 0 0 6 5a7 7 0 0 0-2 5c0 3 1 5 5.5 5.5C9 16 9 17 9 18v4" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>View source</a>
+  <header class="site-header">
+    <div class="container site-header__bar">
+      <a class="wordmark" href="./" aria-label="MemoryNet home"><img src="./assets/mark.svg" alt="" width="36"
+          height="36">MemoryNet</a>
+      <button class="nav-toggle" type="button" aria-controls="main-navigation" aria-expanded="false"
+        hidden>Menu</button>
+      <nav id="main-navigation" aria-label="Main navigation"><a href="#features">Features</a><a href="#workflow">How it
+          works</a><a href="#developers">Developers</a><a href="#compare">Compare</a><a href="./demo.html">Demo</a><a
+          href="./guide.html">Docs</a></nav>
+      <a class="source-link" href="https://github.com/virajsabhaya23/MemoryNet"><svg viewBox="0 0 24 24" width="18"
+          height="18" aria-hidden="true">
+          <path
+            d="M9 19c-4 1-4-2-6-2m12 5v-4c0-1 .1-2-.5-2.5C19 15 20 13 20 10a7 7 0 0 0-2-5 6 6 0 0 0-.1-4S16 1 12 3c-4-2-5.9-2-5.9-2A6 6 0 0 0 6 5a7 7 0 0 0-2 5c0 3 1 5 5.5 5.5C9 16 9 17 9 18v4"
+            fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" />
+        </svg><span class="source-link__text">View source</span></a>
+    </div>
   </header>
   <main id="main">
-    <section class="hero container" aria-labelledby="hero-title">
-      <div class="intro-copy"><h1 id="hero-title">Connect decisions<br> to your work.</h1><div class="intro-detail"><p class="lead">Know which active tasks need review when an approved engineering decision changes.</p><div class="actions"><a class="button" href="#workflow">See the workflow</a><a class="text-link" href="#start">Run locally</a></div></div></div>
-      <div class="atlas-stage">
-      <figure class="product-screen live-network" id="network-demo" data-slot="network-demo" data-kind="product"><img src="./assets/product-network.png" alt="Actual MemoryNet prototype showing 1,118 original Vercel pull request sources across 12 repositories." width="1440" height="1000" fetchpriority="high"></figure>
-      <div class="network-caption"><p>Screenshot of the configured Vercel prototype. A fresh trial starts with its own data.</p><div><a href="./guide.html#graph">Network guide</a><a href="#maintenance">Inspect the source</a></div></div>
+    <section class="hero" aria-labelledby="hero-title">
+      <div class="container hero__grid">
+        <div class="hero__column">
+          <h1 id="hero-title">Decisions change.<br>Keep agents current.</h1>
+          <p class="lead">Other memory tools remember what was said; MemoryNet remembers what was decided and flags work
+            pinned to old versions.</p>
+          <div class="actions"><a class="button button--primary" href="#start">Run the walkthrough</a><a class="button"
+              href="./demo.html">See the 3-minute demo</a></div>
+          <figure class="record" data-slot="hero-record" data-kind="product"
+            data-alt="The decision record in the app: the retry policy replaced, who approved it and when, its cited pull requests and the work it flagged"
+            aria-labelledby="record-title">
+            <figcaption class="record__head"><span class="record__title" id="record-title">Retry policy</span><span
+                class="chip chip--cool">Synthetic fixture run</span></figcaption>
+            <ol class="record__change" aria-label="Decision change">
+              <li class="change change--old"><span class="change__sign" aria-hidden="true">−</span><span
+                  class="change__id"><span class="reading">33b44c5a</span><span class="reading">rev
+                    1</span></span><del><span class="visually-hidden">Replaced: </span>Retry HTTP 429 and 503 while
+                  <code>retriesSoFar</code> is less than 3.</del></li>
+              <li class="change change--new"><span class="change__sign" aria-hidden="true">+</span><span
+                  class="change__id"><span class="reading">eec9b2e2</span><span class="reading">rev
+                    1</span></span><ins><span class="visually-hidden">Current: </span>Retry HTTP 503 only while
+                  <code>retriesSoFar</code> is less than 2. Never retry HTTP 429.</ins></li>
+            </ol>
+            <dl class="record__facts">
+              <div>
+                <dt>Approved by</dt>
+                <dd><span class="person">Fixture reviewer</span><span class="reading">91c474b9</span></dd>
+              </div>
+              <div>
+                <dt>When</dt>
+                <dd><time class="reading" datetime="2026-10-30T16:00:00.000Z">2026-10-30 16:00 UTC</time></dd>
+              </div>
+              <div>
+                <dt>Cites</dt>
+                <dd><span class="reading">pull/101</span><span class="reading">pull/102</span></dd>
+              </div>
+            </dl>
+            <dl class="record__why">
+              <dt>Why</dt>
+              <dd>The replacement removes HTTP 429 retries and reduces the retry limit.</dd>
+            </dl>
+            <dl class="record__work">
+              <dt>Affected work</dt>
+              <dd>Update transport retries <span class="reading reading--was">current</span><span
+                  class="reading reading--bad">review_needed</span><span class="chip chip--bad">Stale export
+                  blocked</span></dd>
+            </dl>
+            <p class="record__note">Replayed from the walkthrough’s synthetic fixture run; approvals are fixture
+              actions, not independent human review. The replacement is a new decision, not a second revision of the old
+              one.</p>
+          </figure>
+        </div>
       </div>
     </section>
-    <div class="requirements-bar" aria-label="Project details"><div class="container requirement-items"><p><strong>Open source</strong><span>Apache 2.0</span></p><p><strong>Local first</strong><span>Your machine, your records</span></p><p><strong>No model key required</strong><span>Node.js 24+</span></p></div></div>
-    <section class="workflow-section container" id="workflow" aria-labelledby="workflow-title">
-      <div class="section-intro"><h2 id="workflow-title">A decision changes.<br>Work needs a review.</h2><p>Capture evidence, approve exact guidance, and pin active work to that version. Revalidation flags changed decisions and refuses stale context exports. Code behavior still needs repository tests.</p></div>
-      <div class="product-tour">
-        <div class="tour-navigation">
-          <div class="screen-tabs" role="group" aria-label="Product screenshots">
-            <div class="screen-choice"><button type="button" data-screen="network" aria-pressed="false" aria-controls="product-screen">Explore Vercel sources</button><p>View captured repository and pull request evidence.</p><a href="./guide.html#graph">Learn network navigation</a></div>
-            <div class="screen-choice is-active"><button type="button" data-screen="work" aria-pressed="true" aria-controls="product-screen">Review the evidence</button><p>Inspect imported candidates before approving them as guidance.</p><a href="./guide.html#first-decision">Try the review workflow</a></div>
-            <div class="screen-choice"><button type="button" data-screen="decision" aria-pressed="false" aria-controls="product-screen">Read original source</button><p>View original files in a separately configured source checkout.</p><a href="./guide.html#your-repository">Try your repository</a></div>
+
+    <section class="features-section" id="features" aria-labelledby="problem-title">
+      <div class="container">
+        <div class="section-head">
+          <h2 id="problem-title">Agents build on yesterday’s decision.</h2>
+          <p class="lead">They don’t fail loudly. A reversed retry policy, a deprecated API, a dropped constraint: the
+            code still compiles. The mistake ships.</p>
+        </div>
+        <table class="diff" id="problem" role="table" aria-labelledby="problem-title">
+          <thead role="rowgroup">
+            <tr role="row">
+              <th scope="col" role="columnheader"><span class="sign sign--minus" aria-hidden="true">−</span>Before</th>
+              <th scope="col" role="columnheader" id="features-title"><span class="sign sign--plus"
+                  aria-hidden="true">+</span>With MemoryNet</th>
+            </tr>
+          </thead>
+          <tbody role="rowgroup">
+            <tr role="row">
+              <td class="diff__minus" role="cell"><span class="sign" aria-hidden="true">−</span>
+                <h3>Instructions go stale silently</h3>
+                <p><code>AGENTS.md</code> says one thing, last month’s PR decided another. Nothing flags the file, the
+                  task, or the agent still following it.</p>
+              </td>
+              <td class="diff__plus" role="cell"><span class="sign" aria-hidden="true">+</span>
+                <h3>Stale-work detection</h3>
+                <p>Tasks pin decision versions and spec hashes. Changes flag them; stale exports are refused, not warned
+                  about.</p>
+              </td>
+            </tr>
+            <tr role="row">
+              <td class="diff__minus" role="cell"><span class="sign" aria-hidden="true">−</span>
+                <h3>Chat memory has no authority</h3>
+                <p>Automatic memory recalls what was <em>said</em>, including the proposal that was rejected. No
+                  approval, no scope, no citation to check.</p>
+              </td>
+              <td class="diff__plus" role="cell"><span class="sign" aria-hidden="true">+</span>
+                <h3>Exact-version approval</h3>
+                <p>Text, applicability, paths, and links are approved as one version. Editing means a new version and
+                  new approvals.</p>
+              </td>
+            </tr>
+            <tr role="row">
+              <td class="diff__minus" role="cell"><span class="sign" aria-hidden="true">−</span>
+                <h3>Code graphs have no governance</h3>
+                <p>A graph knows what calls what. It doesn’t know which decision a human approved, for which branch, or
+                  that it was replaced on Tuesday.</p>
+              </td>
+              <td class="diff__plus" role="cell"><span class="sign" aria-hidden="true">+</span>
+                <h3>Scoped to repo, branch, path and time</h3>
+                <p>Guidance applies only where a reviewer said it applies. Legacy unscoped records never leak into
+                  scoped delivery.</p>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+        <ul class="requirements-bar" aria-label="Works with">
+          <li><strong>Claude Code</strong><span>MCP + bindings</span></li>
+          <li><strong>VS Code, Cursor and Codex</strong><span>one-command connect</span></li>
+          <li><strong>Your machine</strong><span>embedded DB, no cloud</span></li>
+          <li><strong>No account or model key</strong><span>Apache 2.0, local-first, $0</span></li>
+        </ul>
+      </div>
+    </section>
+
+    <section class="workflow-section" id="workflow" aria-labelledby="workflow-title">
+      <div class="container">
+        <div class="section-head section-head--split">
+          <h2 id="workflow-title">Capture, approve, deliver, revalidate on change.</h2>
+          <p class="lead">The lifecycle every MemoryNet decision follows, enforced by the database, not by convention.
+          </p>
+        </div>
+        <figure class="map-figure">
+          <ol class="map" aria-label="Decision lifecycle">
+            <li class="map__node map__node--1">
+              <h3>Capture evidence</h3>
+              <p>Merged PRs, specs, or an agent’s proposal land as cited, pending candidates. Upstream merge is never
+                local approval.</p>
+              <p class="map__readings"><span class="reading">pull/101</span><span class="reading">span [77,
+                  134)</span><span class="chip">pending</span></p>
+            </li>
+            <li class="map__edge map__edge--h map__edge--12" aria-hidden="true"><span>pending</span></li>
+            <li class="map__node map__node--2">
+              <h3>Approve the exact version</h3>
+              <p>A different human (never the author, never an agent) approves the precise text, paths, repo, branch,
+                and validity window. 1 to 3 reviewers per project policy.</p>
+              <p class="map__readings"><span class="person">Fixture reviewer</span><span class="reading">33b44c5a rev
+                  1</span><span class="chip chip--bad">Agent approval refused</span></p>
+            </li>
+            <li class="map__edge map__edge--h map__edge--23" aria-hidden="true"><span>approved</span></li>
+            <li class="map__node map__node--3">
+              <h3>Deliver scoped context</h3>
+              <p>Agents call <code>get_task_context</code> for their task and files. Only approved, current, in-scope
+                guidance returns, with reasons, citations, and a receipt.</p>
+              <p class="map__readings"><span class="reading">receipt 72bdf73e</span><span class="reading">repo
+                  1001</span><span class="reading">main</span></p>
+            </li>
+            <li class="map__edge map__edge--v map__edge--down map__edge--24" aria-hidden="true"><span>replaced<span
+                  class="map__from">, from step 2</span></span></li>
+            <li class="map__node map__node--4">
+              <h3>Flag what changed</h3>
+              <p>Approve a replacement and every pinned task is marked stale. Stale context cannot be exported until a
+                human revalidates it.</p>
+              <div class="map__hint">
+                <p>The replacement’s scripted conflict hint names decision 33b44c5a, revision 1. The original remains
+                  authoritative while the replacement is pending.</p>
+                <p class="map__readings"><span class="reading">eec9b2e2 rev 1</span><span>Update transport
+                    retries</span><span class="reading reading--bad">review_needed</span><span
+                    class="chip chip--bad">Stale export blocked</span></p>
+              </div>
+            </li>
+            <li class="map__edge map__edge--v map__edge--up map__edge--43" aria-hidden="true"><span>revalidated<span
+                  class="map__from">, back to step 3</span></span></li>
+          </ol>
+          <figcaption>
+            <p class="caption">The moment a decision changes, work pinned to the old version is flagged, and stale
+              exports are refused. Readings come from the walkthrough’s synthetic fixture run.</p>
+          </figcaption>
+        </figure>
+      </div>
+    </section>
+
+    <section class="context-section" aria-labelledby="context-title">
+      <div class="container">
+        <div class="section-head section-head--split">
+          <h2 id="context-title">Inspect the source, then decide.</h2>
+          <p><a class="text-link" href="./guide.html#first-decision">Try it yourself</a></p>
+        </div>
+        <div class="pinned">
+          <div class="product-evidence" id="maintenance">
+            <figure class="product-screen" id="product-screen" data-slot="hero-product" data-kind="product"
+              data-alt="The review queue in the app: candidates imported from real Vercel pull requests, pending review">
+              <img loading="lazy" src="./assets/product-review.webp" id="screen-image"
+                alt="Actual MemoryNet review queue: candidates imported from real Vercel pull requests wait for review, with the next one ready to read and decide."
+                width="1816" height="1136">
+            </figure>
+            <div class="screen-meta">
+              <p class="caption" id="screen-caption" aria-live="polite">Actual app. Real Vercel PR evidence. Candidates
+                remain pending review.</p><a class="expand-link" href="./assets/product-review.webp" id="expand-screen"
+                aria-label="Open full-size review queue screenshot">View full size</a>
+            </div>
+            <noscript>
+              <p class="caption"><a href="./assets/product-network.webp">View a pull request in the network</a> or <a
+                  href="./assets/product-source.webp">view original repository source</a>.</p>
+            </noscript>
+          </div>
+          <div class="pinned__panels">
+            <div class="screen-tabs" role="group" aria-label="Product screenshots">
+              <div class="screen-choice"><button type="button" data-screen="network" aria-pressed="false"
+                  aria-controls="product-screen">Explore sources</button>
+                <p>View captured repository and pull request evidence.</p><a href="./guide.html#graph">Learn network
+                  navigation</a>
+              </div>
+              <div class="screen-choice is-active"><button type="button" data-screen="work" aria-pressed="true"
+                  aria-controls="product-screen">Review the evidence</button>
+                <p>Inspect imported candidates before approving them as guidance.</p><a
+                  href="./guide.html#first-decision">Try the review workflow</a>
+              </div>
+              <div class="screen-choice"><button type="button" data-screen="decision" aria-pressed="false"
+                  aria-controls="product-screen">Read original source</button>
+                <p>View original files in a separately configured source checkout.</p><a
+                  href="./guide.html#your-repository">Try your repository</a>
+              </div>
+            </div>
           </div>
         </div>
-        <div class="product-evidence" id="maintenance">
-          <figure class="product-screen" id="product-screen" data-slot="hero-product" data-kind="product"><img loading="lazy" src="./assets/product-work.png" id="screen-image" alt="Actual MemoryNet review queue containing candidates from real Vercel pull requests." width="1440" height="1000"></figure>
-          <div class="screen-meta"><p class="caption" id="screen-caption" aria-live="polite">Actual app. Real Vercel PR evidence. Candidates remain pending review.</p><a class="expand-link" href="./assets/product-work.png" id="expand-screen" aria-label="Open full-size review queue screenshot">View full size</a></div>
-          <noscript><p class="caption"><a href="./assets/product-network.png">View the network graph</a> or <a href="./assets/product-decision.png">view original repository source</a>.</p></noscript>
+        <div class="lineage-block">
+          <ol class="lineage" aria-label="Real Vercel pull request evidence and local review">
+            <li>
+              <h3>Original pull request</h3>
+              <p><span class="reading">vercel/next.js #101008</span></p>
+              <p>turbo-tasks: add cancelable cell reads via Vc::lazy_reader()</p><a class="lineage-state"
+                href="https://github.com/vercel/next.js/pull/101008">Read the original PR</a>
+            </li>
+            <li>
+              <h3>Pinned evidence</h3>
+              <p>Original merge commit <code>61e1348fb523</code></p><a class="lineage-state"
+                href="https://github.com/vercel/next.js/commit/61e1348fb523473db8cb3a6cfcadf7eefbf27d5f">Inspect the
+                commit</a>
+            </li>
+            <li>
+              <h3>Your review</h3>
+              <p><span class="chip chip--person">Candidate remains pending</span></p>
+              <p>Imported text becomes guidance only after explicit review of the exact revision.</p><a
+                href="#maintenance" class="lineage-state" data-show-screen="work">Inspect the review queue</a>
+            </li>
+          </ol>
+          <p class="caption">Original public source. Upstream merge does not imply local approval.</p>
         </div>
       </div>
     </section>
-    <section class="context-section" aria-labelledby="context-title"><div class="container">
-      <div class="section-intro"><h2 id="context-title">Inspect the source.<br>Then decide.</h2><a class="text-link" href="./guide.html#first-decision">Try it yourself</a></div>
-      <div class="decision-lineage" aria-label="Real Vercel pull request evidence and local review">
-        <article><h3>Original pull request</h3><p class="version-label">vercel/next.js #101008</p><p>turbo-tasks: add cancelable cell reads via Vc::lazy_reader()</p><a class="lineage-state" href="https://github.com/vercel/next.js/pull/101008">Read the original PR</a></article>
-        <svg class="lineage-connector" viewBox="0 0 80 100" aria-hidden="true"><path d="M0 50h75m-8-7 8 7-8 7"/></svg>
-        <article><h3>Pinned evidence</h3><p class="version-label">Original merge commit</p><p><code>61e1348fb523</code></p><a class="lineage-state" href="https://github.com/vercel/next.js/commit/61e1348fb523473db8cb3a6cfcadf7eefbf27d5f">Inspect the commit</a></article>
-        <svg class="lineage-connector" viewBox="0 0 80 100" aria-hidden="true"><path d="M0 50h75m-8-7 8 7-8 7"/></svg>
-        <article><h3>Your review</h3><p class="version-label">Candidate remains pending</p><p>Imported text becomes guidance only after explicit review of the exact revision.</p><a href="#maintenance" class="lineage-state" data-show-screen="work">Inspect the review queue</a></article>
-      </div>
-      <p class="caption">Original public source. Upstream merge does not imply local approval.</p>
-      <div class="agent-context"><div><h3>The same context for coding agents.</h3><p>Read-only MCP delivers applicable guidance within repository, branch, and time boundaries, and records what was delivered.</p><a class="text-link" href="./guide.html#mcp">Connect a coding agent</a></div><details class="mcp-example"><summary>Inspect the MCP call</summary><pre><code>{
-  "name": "get_context",
-  "arguments": {
-    "query": "reviewed guidance",
-    "limit": 5
-  }
-}</code></pre><p class="code-note">Read-only. No approvals or writes from the agent.</p></details></div>
-    </div></section>
-    <section class="readiness-section container" id="readiness" aria-labelledby="readiness-title">
-      <div class="readiness-layout"><div><h2 id="readiness-title">Built locally.<br>Verified locally.</h2><p class="lead">A local pilot for public<br>and synthetic evidence.</p><a class="text-link" href="./guide.html#work-repositories">Personal and work trials</a></div>
-        <div class="readiness-details"><dl class="capability-list"><div><dt>Reviewed records</dt><dd>Evidence, exact versions, history, and revocation.</dd></div><div><dt>Agent context</dt><dd>Scoped MCP and retrieval receipts.</dd></div><div><dt>Affected work</dt><dd>Revalidation and stale-context export blocking.</dd></div><div><dt>Recovery</dt><dd>Database locking and verified offline backups.</dd></div></dl>
-        <details class="readiness-note"><summary>Evidence and production boundaries</summary><p>A clean checkout provides a development identity picker. Optional access-key mode binds one local operator. Neither mode supports a shared service for private work repositories.</p><p>Imported PRs are evidence. Scoped guidance requires explicit applicability and exact-revision approval. Pending and legacy unscoped records are excluded from scoped agent context.</p><a class="text-link" href="./guide.html#limits">Read the supported-use limits</a></details></div>
+
+    <section class="developers-section" id="developers" aria-labelledby="developers-title">
+      <div class="container">
+        <div class="section-head section-head--split">
+          <h2 id="developers-title">Four MCP tools, none can approve.</h2>
+          <p class="lead">Everything a coding agent needs to stay current, and nothing it can use to approve its own
+            guidance.</p>
+        </div>
+        <div class="switcher" data-tabs>
+          <div class="tabs" role="tablist" aria-label="Product views">
+            <button type="button" role="tab" id="tab-mcp" aria-controls="panel-mcp" aria-selected="true"
+              data-tab-btn="mcp">MCP context</button>
+            <button type="button" role="tab" id="tab-receipt" aria-controls="panel-receipt" aria-selected="false"
+              data-tab-btn="receipt">Audit receipt</button>
+            <button type="button" role="tab" id="tab-guard" aria-controls="panel-guard" aria-selected="false"
+              data-tab-btn="guard">Extraction guard</button>
+            <button type="button" role="tab" id="tab-connect" aria-controls="panel-connect" aria-selected="false"
+              data-tab-btn="connect">Install &amp; connect</button>
+          </div>
+          <div class="tab-panel" role="tabpanel" id="panel-mcp" aria-labelledby="tab-mcp" data-tab-panel="mcp">
+            <figure class="tab-panel__code code-figure">
+              <figcaption>Inspect the MCP call (example values)</figcaption>
+              <pre><code><span class="ln">{</span>
+<span class="ln">  "name": "get_task_context",</span>
+<span class="ln">  "arguments": {</span>
+<span class="ln">    "task": "Update the retry policy",</span>
+<span class="ln">    "paths": ["src/api/retry.ts"],</span>
+<span class="ln">    "maxTokens": 2000</span>
+<span class="ln">  }</span>
+<span class="ln">}</span>
+<span class="ln"><span class="hc-k">← 200</span> items[0] {</span>
+<span class="ln">  "title": "Retry at most twice",</span>
+<span class="ln">  "revision": 2, "score": 0.94,</span>
+<span class="ln">  "reasons": [{ "kind": "governs_path",</span>
+<span class="ln">    "pattern": "src/api/**" }],</span>
+<span class="ln">  "citations": [{ "reference": "pull/101008" }]</span>
+<span class="ln">} <span class="hc-c">// receipt recorded</span></span></code></pre>
+            </figure>
+            <div class="tab-panel__text">
+              <h3>Context that explains itself</h3>
+              <p>Bounded graph expansion over reviewed links (<code>depends_on</code>, <code>refines</code>,
+                <code>conflicts_with</code>) with a machine-readable reason for every item: governs-this-path,
+                matched-task, linked, shared-evidence.
+              </p>
+              <p>Task-aware, permission-filtered, packed to a token budget, with the reason every item was included.</p>
+              <p class="caption">Context includes reasons, citations, and version receipts. Agents cannot approve.</p>
+            </div>
+          </div>
+          <div class="tab-panel" role="tabpanel" id="panel-receipt" aria-labelledby="tab-receipt"
+            data-tab-panel="receipt">
+            <figure class="tab-panel__code code-figure">
+              <figcaption>Audit receipt (example values)</figcaption>
+              <pre><code><span class="ln">receipt  8f2c…a41b</span>
+<span class="ln">memory   3b363a47…  rev 2</span>
+<span class="ln">approved by 2 reviewers · exact version</span>
+<span class="ln">scope    repo 1001 · branch main</span>
+<span class="ln">chain    sha256(prev : seq : payload) ✓</span>
+<span class="ln"><span class="hc-c">// verify anytime: npm run ledger:verify</span></span></code></pre>
+            </figure>
+            <div class="tab-panel__text">
+              <h3>Tamper-evident ledger</h3>
+              <p>Approvals and receipts chained with SHA-256, verifiable offline, with external checkpoints against full
+                rewrites.</p>
+              <p>Every approval and delivery is chained into a tamper-evident ledger you can verify offline.</p>
+            </div>
+          </div>
+          <div class="tab-panel" role="tabpanel" id="panel-guard" aria-labelledby="tab-guard" data-tab-panel="guard">
+            <figure class="tab-panel__code code-figure">
+              <figcaption>Extract a decision with an exact quote</figcaption>
+              <blockquote class="excerpt">Synthetic demonstration evidence; this is not a real pull request.
+                Decision: <mark>Retry HTTP 429 and 503 while retriesSoFar is less than 3.</mark></blockquote>
+              <p class="excerpt-meta"><span class="reading">Validated UTF-16 span [77, 134). Provider: scripted-demo.
+                  Live Meta requests: 0.</span></p>
+            </figure>
+            <div class="tab-panel__text">
+              <h3>AI drafts, humans decide</h3>
+              <p>Optional model extraction proposes candidates with exact source quotes and content flags (secret,
+                personal-data, instruction-like). Publication is always a pending proposal awaiting human review.</p>
+            </div>
+          </div>
+          <div class="tab-panel" role="tabpanel" id="panel-connect" aria-labelledby="tab-connect"
+            data-tab-panel="connect">
+            <div class="tab-panel__code">
+              <div class="command-block dev-install">
+                <div class="command-heading"><span>Install &amp; connect</span><button class="button copy-button"
+                    type="button" data-copy="install-commands">Copy commands</button><span role="status"
+                    aria-live="polite"></span></div>
+                <pre><code id="install-commands"><span class="ln">npm ci --ignore-scripts</span>
+<span class="ln">npm run setup -- --repo OWNER/REPO --reviewer "A teammate" --client claude</span>
+<span class="ln">npm start</span></code></pre>
+                <p class="code-note">One command configures your coding client. The binding scopes every call to one
+                  project, repository, and branch, and expires.</p>
+              </div>
+            </div>
+            <div class="tab-panel__text">
+              <h3>The same context for coding agents.</h3>
+              <p>MCP delivers reviewed guidance for the task and files being changed. Agents can propose decisions and
+                report stale guidance; people approve every published version.</p>
+              <a class="text-link" href="./guide.html#mcp">Connect a coding agent</a>
+            </div>
+          </div>
+        </div>
       </div>
     </section>
-    <section class="start-section" id="start" aria-labelledby="start-title"><div class="container start-grid"><div><h2 id="start-title">Start with<br>one decision.</h2><p>From a source checkout, run an isolated sandbox, then try a snapshot of your public repository.</p><a class="text-link" href="./guide.html#install">Read the setup guide</a></div><div class="command-block"><div class="command-heading"><span>Local setup</span><button class="copy-button" type="button" data-copy="install-commands">Copy commands</button><span role="status" aria-live="polite"></span></div><pre><code id="install-commands">npm ci --ignore-scripts
-npm run check
-MEMORYNET_PROTOTYPE_CONFIG=off MEMORYNET_DATA_DIR=.data/first-trial npm run app</code></pre><p class="code-note">Open localhost:3050 → System → Load synthetic example data. Public source publication is still pending; see the setup guide.</p></div></div></section>
+
+    <section class="compare-section" id="compare" aria-labelledby="compare-title">
+      <div class="container">
+        <div class="section-head">
+          <h2 id="compare-title">Different tools remember different things.</h2>
+          <p class="lead">Automatic recall tools are excellent at what they do. MemoryNet is built for the moment a
+            decision must be <em>trusted</em>.</p>
+        </div>
+        <div class="compare-wrap">
+          <table class="compare-table" role="table" aria-labelledby="compare-title">
+            <thead role="rowgroup">
+              <tr role="row">
+                <th scope="col" role="columnheader">Capability</th>
+                <th scope="col" role="columnheader" class="is-memorynet">MemoryNet</th>
+                <th scope="col" role="columnheader">Mem0</th>
+                <th scope="col" role="columnheader">claude-mem</th>
+                <th scope="col" role="columnheader">Graphify</th>
+                <th scope="col" role="columnheader">AGENTS.md</th>
+              </tr>
+            </thead>
+            <tbody role="rowgroup">
+              <tr role="row">
+                <th scope="row" role="rowheader">Human approval of exact version</th>
+                <td role="cell" class="is-memorynet" data-label="MemoryNet"><span
+                    class="rating rating--full">Full</span>Enforced (DB)</td>
+                <td role="cell" data-label="Mem0"><span class="rating rating--none">Not a focus</span></td>
+                <td role="cell" data-label="claude-mem"><span class="rating rating--none">Not a focus</span></td>
+                <td role="cell" data-label="Graphify"><span class="rating rating--none">Not a focus</span></td>
+                <td role="cell" data-label="AGENTS.md"><span class="rating rating--partial">Partial</span>Git review
+                  only</td>
+              </tr>
+              <tr role="row">
+                <th scope="row" role="rowheader">Repo / branch / path / time scope</th>
+                <td role="cell" class="is-memorynet" data-label="MemoryNet"><span
+                    class="rating rating--full">Full</span>All four</td>
+                <td role="cell" data-label="Mem0"><span class="rating rating--partial">Partial</span>User/session</td>
+                <td role="cell" data-label="claude-mem"><span class="rating rating--none">Not a focus</span></td>
+                <td role="cell" data-label="Graphify"><span class="rating rating--none">Not a focus</span></td>
+                <td role="cell" data-label="AGENTS.md"><span class="rating rating--none">Not a focus</span></td>
+              </tr>
+              <tr role="row">
+                <th scope="row" role="rowheader">Citations to source evidence</th>
+                <td role="cell" class="is-memorynet" data-label="MemoryNet"><span
+                    class="rating rating--full">Full</span>Every item</td>
+                <td role="cell" data-label="Mem0"><span class="rating rating--partial">Partial</span></td>
+                <td role="cell" data-label="claude-mem"><span class="rating rating--partial">Partial</span></td>
+                <td role="cell" data-label="Graphify"><span class="rating rating--full">Full</span>Code refs</td>
+                <td role="cell" data-label="AGENTS.md"><span class="rating rating--none">Not a focus</span></td>
+              </tr>
+              <tr role="row">
+                <th scope="row" role="rowheader">Stale-decision blast radius</th>
+                <td role="cell" class="is-memorynet" data-label="MemoryNet"><span
+                    class="rating rating--full">Full</span>Flags + blocks export</td>
+                <td role="cell" data-label="Mem0"><span class="rating rating--none">Not a focus</span></td>
+                <td role="cell" data-label="claude-mem"><span class="rating rating--none">Not a focus</span></td>
+                <td role="cell" data-label="Graphify"><span class="rating rating--partial">Partial</span>Graph impact
+                </td>
+                <td role="cell" data-label="AGENTS.md"><span class="rating rating--none">Not a focus</span></td>
+              </tr>
+              <tr role="row">
+                <th scope="row" role="rowheader">Tamper-evident audit trail</th>
+                <td role="cell" class="is-memorynet" data-label="MemoryNet"><span
+                    class="rating rating--full">Full</span>SHA-256 ledger</td>
+                <td role="cell" data-label="Mem0"><span class="rating rating--partial">Partial</span></td>
+                <td role="cell" data-label="claude-mem"><span class="rating rating--none">Not a focus</span></td>
+                <td role="cell" data-label="Graphify"><span class="rating rating--none">Not a focus</span></td>
+                <td role="cell" data-label="AGENTS.md"><span class="rating rating--partial">Partial</span>Git history
+                </td>
+              </tr>
+              <tr role="row">
+                <th scope="row" role="rowheader">Automatic capture</th>
+                <td role="cell" class="is-memorynet" data-label="MemoryNet"><span
+                    class="rating rating--partial">Partial</span>Proposals + extraction</td>
+                <td role="cell" data-label="Mem0"><span class="rating rating--full">Full</span></td>
+                <td role="cell" data-label="claude-mem"><span class="rating rating--full">Full</span>Hooks</td>
+                <td role="cell" data-label="Graphify"><span class="rating rating--full">Full</span>AST build</td>
+                <td role="cell" data-label="AGENTS.md"><span class="rating rating--none">Not a focus</span>Manual</td>
+              </tr>
+              <tr role="row">
+                <th scope="row" role="rowheader">Semantic / graph retrieval</th>
+                <td role="cell" class="is-memorynet" data-label="MemoryNet"><span
+                    class="rating rating--partial">Partial</span>Lexical + reviewed graph</td>
+                <td role="cell" data-label="Mem0"><span class="rating rating--full">Full</span>Vector + graph</td>
+                <td role="cell" data-label="claude-mem"><span class="rating rating--full">Full</span>Vector</td>
+                <td role="cell" data-label="Graphify"><span class="rating rating--full">Full</span>Code graph</td>
+                <td role="cell" data-label="AGENTS.md"><span class="rating rating--none">Not a focus</span>File read
+                </td>
+              </tr>
+              <tr role="row">
+                <th scope="row" role="rowheader">Coding-agent delivery</th>
+                <td role="cell" class="is-memorynet" data-label="MemoryNet"><span
+                    class="rating rating--full">Full</span>Scoped MCP + receipts</td>
+                <td role="cell" data-label="Mem0"><span class="rating rating--partial">Partial</span>SDK</td>
+                <td role="cell" data-label="claude-mem"><span class="rating rating--full">Full</span>Auto-inject</td>
+                <td role="cell" data-label="Graphify"><span class="rating rating--partial">Partial</span>MCP queries
+                </td>
+                <td role="cell" data-label="AGENTS.md"><span class="rating rating--full">Full</span>Native</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <p class="caption">Based on public documentation, November 2026. Rivals lead on automatic recall; MemoryNet
+          leads where a wrong memory is worse than none.</p>
+      </div>
+    </section>
+
+    <section class="readiness-section" id="readiness" aria-labelledby="readiness-title">
+      <div class="container readiness-layout">
+        <div class="readiness-intro">
+          <h2 id="readiness-title">Built and verified locally.</h2>
+          <p class="lead">A local pilot for public and synthetic evidence.</p>
+          <a class="text-link" href="./guide.html#work-repositories">Personal and work trials</a>
+          <p class="tests-reading"><span class="reading">450+</span><span>automated tests</span></p>
+        </div>
+        <div class="readiness-details">
+          <dl class="capability-list">
+            <div>
+              <dt>AI Decision Extraction</dt>
+              <dd>Meta suggests decisions and possible conflicts; exact source quotes and human review establish
+                authority.</dd>
+            </div>
+            <div>
+              <dt>Agent Audit Trail</dt>
+              <dd>Task-aware MCP with citations, exact versions, and a receipt for every delivery: <span
+                  class="reading">100%</span> of deliveries receipted and chained.</dd>
+            </div>
+            <div>
+              <dt>Stale-Work Radar</dt>
+              <dd>Find tasks pinned to changed decisions and block stale context exports.</dd>
+            </div>
+            <div>
+              <dt>Recovery</dt>
+              <dd>Verified backups, pre-upgrade snapshots, and audit integrity.</dd>
+            </div>
+          </dl>
+          <section class="evaluation" id="evaluation" aria-labelledby="evaluation-title">
+            <h3 id="evaluation-title">Show the evidence, keep the claims honest.</h3>
+            <p>The lifecycle demo verifies stale-context blocking. Earlier coding observations do not establish a
+              benefit over maintained instructions, and the site says so.</p>
+            <dl class="capability-list">
+              <div>
+                <dt>Synthetic retry task</dt>
+                <dd>MemoryNet, structured decisions, and current dated sources passed. A deliberately outdated
+                  instructions-only control failed. One observation per arm.</dd>
+              </div>
+              <div>
+                <dt>Controlled ESLint task</dt>
+                <dd>Both ordinary sources and MemoryNet passed seven checks. Resource equivalence was not established.
+                </dd>
+              </div>
+              <div>
+                <dt>Next measurement</dt>
+                <dd>A preregistered comparison of in-flight decision changes with equal sources, model budgets, and
+                  human maintenance accounting remains to be run.</dd>
+              </div>
+            </dl>
+            <p class="caption">Historical observations reviewed November 3, 2026; no percentage improvement or
+              production effectiveness is claimed. <a href="./evaluation.json">Read the observation summary</a> or <a
+                href="./demo.html">inspect the executed lifecycle replay</a>.</p>
+          </section>
+          <details class="readiness-note">
+            <summary>Evidence and production boundaries</summary>
+            <p>A configured local workspace opens as one operator; a clean checkout provides test personas. Existing
+              GitHub or access-key login gates stay enabled, and GitHub sign-in can verify linked accounts. The app
+              remains a local prototype for public or synthetic evidence.</p>
+            <p>Imported PRs are evidence. Scoped guidance requires explicit applicability and exact-revision approval.
+              Pending and legacy unscoped records are excluded from scoped agent context.</p>
+            <p>Real-team benefit remains unproven. Automatic notifications, persistent task-bound delivery, and verified
+              CI integration remain outside the current workflow.</p><a class="text-link"
+              href="./guide.html#limits">Read the remaining work</a>
+          </details>
+        </div>
+      </div>
+    </section>
+
+    <section class="start-section" id="start" aria-labelledby="start-title">
+      <div class="container start-grid">
+        <div class="start-copy">
+          <h2 id="start-title">Start with one decision.</h2>
+          <p>From a source checkout, run the decision-change walkthrough, then connect your public repository and coding
+            agent.</p>
+          <div class="command-block">
+            <div class="command-heading"><span>Run the walkthrough</span><button class="button copy-button"
+                type="button" data-copy="demo-commands">Copy commands</button><span role="status"
+                aria-live="polite"></span></div>
+            <pre><code id="demo-commands"><span class="ln">npm ci --ignore-scripts</span>
+<span class="ln">npm run demo</span></code></pre>
+            <p class="code-note">Open <code>.local/decision-demo/index.html</code>. Scripted extraction and fixture
+              approvals; real MCP and stale-export checks. No key or account required.</p>
+          </div>
+          <a class="text-link" href="./guide.html#install">Read the setup guide</a>
+        </div>
+        <figure class="start-screen">
+          <div data-slot="close-screen" data-kind="product"
+            data-alt="The network map in the app: each project, business unit and the organization is its own cell of records">
+            <img loading="lazy" src="./assets/product-map.webp"
+              alt="Actual MemoryNet network map of the synthetic example organization: the Checkout, Payments and Helpdesk projects, the Platform and Support Tools units and the organization each form a cell of rules, decisions, agents and pull requests, joined by typed connections."
+              width="1800" height="1124">
+          </div>
+          <figcaption class="caption">Actual app with synthetic example data. Each project is its own cell of
+            decisions, rules, agents and the pull requests behind them.</figcaption>
+        </figure>
+      </div>
+    </section>
   </main>
-  <footer class="site-footer container"><a class="wordmark" href="./"><img src="./assets/mark.svg" alt="" width="32" height="32">MemoryNet</a><p>Local first. Human reviewed.</p><div><a href="#readiness">What’s ready</a><a href="./guide.html">Documentation</a><a href="https://github.com/virajsabhaya23/MemoryNet">Source repository</a></div></footer>
+  <footer class="site-footer">
+    <div class="container">
+      <a class="wordmark mast__wordmark" href="./"><img src="./assets/mark.svg" alt="" width="32"
+          height="32">MemoryNet</a>
+      <div class="mast__row">
+        <p>Local first. Human reviewed.</p>
+        <div class="mast__links"><a href="#readiness">What’s ready</a><a href="./guide.html">Documentation</a><a
+            href="https://github.com/virajsabhaya23/MemoryNet">Source repository</a></div>
+      </div>
+    </div>
+  </footer>
 </body>
+
 </html>

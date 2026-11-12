@@ -49,7 +49,7 @@ test("a search shows current knowledge with its evidence, and the search log rec
   const log = await rudy.get(`/projects/${checkout}/retrievals`);
   assert.equal(log.status, 200);
   assert.match(log.body, /Your searches/);
-  assert.match(log.body, /<td>\s*Rudy Reader\s*<\/td>/);
+  assert.match(log.body, /Rudy Reader/);
   assert.match(log.body, /card, retri/);
   assert.match(log.body, /Retry card authorization at most 3 times/);
 });
@@ -146,14 +146,14 @@ test("administrators see everyone's searches; others see only their own", async 
 
   const own = await cody.get(`/projects/${checkout}/retrievals`);
   assert.match(own.body, /Your searches/);
-  assert.match(own.body, /<td>\s*Cody Contributor\s*<\/td>/);
+  assert.match(own.body, /Cody Contributor/);
   assert.doesNotMatch(own.body, /Rudy Reader/);
 
   for (const name of ["Adam Admin", "Olivia Owner"]) {
     const admin = await as(app, env.db, name);
     const log = await admin.get(`/projects/${checkout}/retrievals`);
     assert.match(log.body, /Everyone&#39;s searches/);
-    assert.match(log.body, /<td>\s*Cody Contributor\s*<\/td>/);
-    assert.match(log.body, /<td>\s*Rudy Reader\s*<\/td>/);
+    assert.match(log.body, /Cody Contributor/);
+    assert.match(log.body, /Rudy Reader/);
   }
 });

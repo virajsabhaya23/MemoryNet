@@ -9,7 +9,7 @@ import {
   type RetrievalRecord,
 } from "../../retrieval.ts";
 import { ROLE_RANK } from "../../roles.ts";
-import { badge, externalLink, html, table, type SafeHtml } from "../html.ts";
+import { badge, externalLink, html, ledgerRow, table, type SafeHtml } from "../html.ts";
 import {
   page,
   requireUser,
@@ -235,7 +235,7 @@ async function searchPage(rc: RequestContext): Promise<WebResponse> {
     title: `Search ${view.project.name}`,
     crumbs: projectCrumbs(view),
     status,
-    body: html`<section>
+    body: html`<section class="panel">
         <h2>Search knowledge</h2>
         <p class="hint">
           Finds current, approved knowledge you can read in this project, and
@@ -254,7 +254,7 @@ function returned(record: RetrievalRecord): SafeHtml {
   if (record.failed) {
     return html`${badge("failed", "danger")} nothing was searched`;
   }
-  if (record.items.length === 0) {
+  if (record.items.length === 0 && record.definitions.length === 0) {
     return html`<span class="muted">nothing you can read now</span>`;
   }
   return html`<ul class="plain">
@@ -264,6 +264,13 @@ function returned(record: RetrievalRecord): SafeHtml {
           <a href="/memories/${item.memoryId}">${item.title}</a>
           <small>version ${item.revision}</small>
           ${item.status === "approved" ? "" : memoryStatusBadge(item.status)}
+        </li>`,
+    )}
+    ${record.definitions.map(
+      (definition) =>
+        html`<li>
+          <a href="/definitions/${definition.definitionId}">${definition.name}</a>
+          <small>${definition.kind} version ${definition.revision}</small>
         </li>`,
     )}
   </ul>`;
@@ -287,25 +294,21 @@ async function logPage(rc: RequestContext): Promise<WebResponse> {
     body: html`<p class="hint">
         ${everyone ? "Everyone's searches" : "Your searches"} in this project,
         newest first, up to 200: who, when, the words searched, and each memory
-        version shown. Words are stored as the search reads them (word stems,
+        and definition version shown. Words are stored as the search reads them (word stems,
         without very common words), and not at all when the search may have held
         personal data. Memories you cannot read now are left out.
       </p>
       <p><a href="/projects/${projectId}/search">Search this project</a></p>
-      ${table(
-        ["When", "Who", "Searched for", "Returned"],
-        records.map((record) => [
-          html`<span id="r-${record.id}"
-            >${formatTime(record.retrievedAt)}</span
-          >`,
-          html`${nameOf(names, record.callerId)}`,
-          record.terms === null
-            ? html`<span class="muted">not recorded</span>`
-            : html`${termWords(record.terms)}`,
-          returned(record),
-        ]),
-        "No searches recorded here yet.",
-      )}`,
+      ${records.length === 0
+        ? html`<p class="empty">No searches recorded here yet.</p>`
+        : html`<ul class="ledger">
+            ${records.map((record) => ledgerRow({
+              href: `/projects/${projectId}/search`,
+              title: html`<span id="r-${record.id}">${formatTime(record.retrievedAt)}</span>`,
+              meta: html`${nameOf(names, record.callerId)} · ${record.terms === null ? "not recorded" : termWords(record.terms)}`,
+              trailing: returned(record),
+            }))}
+          </ul>`}`,
   });
 }
 

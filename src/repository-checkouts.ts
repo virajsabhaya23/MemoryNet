@@ -1,10 +1,10 @@
 import {execFile} from "node:child_process";
 import {promisify} from "node:util";
 import {readFile,realpath} from "node:fs/promises";
-import {posix} from "node:path";
+import {isAbsolute,posix} from "node:path";
 import {z} from "zod";
 const exec=promisify(execFile);
-const entry=z.object({repository:z.string().regex(/^[\w.-]+\/[\w.-]+$/),path:z.string().startsWith("/"),head:z.string().regex(/^[a-f0-9]{40}$/),origin:z.string(),files:z.number().int().nonnegative(),worktreeComplete:z.literal(true)});
+const entry=z.object({repository:z.string().regex(/^[\w.-]+\/[\w.-]+$/),path:z.string().refine(isAbsolute,"Use an absolute checkout path"),head:z.string().regex(/^[a-f0-9]{40}$/),origin:z.string(),files:z.number().int().nonnegative(),worktreeComplete:z.literal(true)});
 export type Checkout=z.infer<typeof entry>;
 export type CheckoutCatalog=ReadonlyMap<string,Checkout>;
 const git=async(path:string,...args:string[])=>(await exec("git",["--no-replace-objects","-c","core.hooksPath=/dev/null","-C",path,...args],{encoding:"utf8",maxBuffer:4*1024*1024,timeout:15000})).stdout;

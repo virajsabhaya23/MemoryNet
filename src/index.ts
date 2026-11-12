@@ -64,6 +64,7 @@ export {
   type DefinitionVersion,
   type DefinitionView,
 } from "./definitions.ts";
+export { basedOnChanges, type BasedOnChange } from "./definition-freshness.ts";
 export {
   ConflictError,
   ForbiddenError,
@@ -83,6 +84,7 @@ export {
   CAPTURE_METHODS,
   CHANGE_KINDS,
   editProposal,
+  getApprovalStatus,
   getMemory,
   getProposal,
   getProposalHistory,
@@ -100,8 +102,11 @@ export {
   proposeChange,
   proposeMemory,
   proposeRestore,
+  recordApproval,
   recordSource,
   rejectProposal,
+  type ApprovalResult,
+  type ApprovalStatus,
   type CaptureMethod,
   type ChangeKind,
   type Evidence,
@@ -120,6 +125,7 @@ export {
 export {
   assignRole,
   createPrincipal,
+  linkGitHubAccount,
   listOwnRoles,
   listPrincipals,
   listProjectPeople,
@@ -173,8 +179,19 @@ export {
   type NotCurrentMatch,
   type RetrievalOutcome,
   type RetrievalRecord,
+  type RetrievedDefinition,
   type RetrievedItem,
 } from "./retrieval.ts";
+export {
+  getTaskContext,
+  TASK_CONTEXT_LIMITS,
+  type TaskContextDefinition,
+  type TaskContextDefinitionReason,
+  type TaskContextInput,
+  type TaskContextItem,
+  type TaskContextReason,
+  type TaskContextResponse,
+} from "./task-context.ts";
 export {
   AGENT_ROLES,
   MINIMUM_ROLE,
@@ -185,3 +202,24 @@ export {
 } from "./roles.ts";
 
 export { createWork, listWork, exportWork, closeWork, WorkInputSchema, type WorkInput, type WorkRecord, type WorkAssessment, type WorkIssue } from "./work.ts";
+export { analyzeBrainHealth, buildBriefInput, createBrainBrief, listBrainActivity, listBrainBriefs, type BrainActivityEvent, type BrainBrief, type BrainFinding, type BrainFindingKind } from "./brain.ts";
+export { listBrainRecommendations, type BrainRecommendation, type BrainRecommendationKind } from "./brain.ts";
+export {
+  formatCheckpoint,
+  GENESIS_HASH,
+  ledgerCheckpoints,
+  parseCheckpoint,
+  SYSTEM_CHAIN_ID,
+  verifyLedger,
+  verifyOrganizationLedger,
+  type LedgerChainReport,
+  type LedgerCheckpoint,
+  type LedgerReport,
+} from "./ledger.ts";
+export {
+  DEFAULT_POLICY,
+  getProjectPolicy,
+  MAX_REQUIRED_APPROVALS,
+  setProjectPolicy,
+  type ProjectPolicy,
+} from "./policy.ts";

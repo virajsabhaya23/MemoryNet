@@ -1,4 +1,6 @@
+import { createHash } from "node:crypto";
 import type { ScopeRef } from "../../access.ts";
+import { ROLE_RANK } from "../../roles.ts";
 import {
   EDGE_RELATIONS,
   getNetwork,
@@ -14,6 +16,7 @@ import {
   page,
   interfaceIcon,
   requireUser,
+  SECURITY_HEADERS,
   type RequestContext,
   type Route,
   type WebResponse,
@@ -65,37 +68,85 @@ function previewDetails(node: NetworkNode): NetworkNode["details"] {
       };
 }
 
+/** What the map may offer to do to a record, mirroring the record pages' own rules. */
+function nodeActions(
+  graph: NetworkGraph,
+  node: NetworkNode,
+): Record<string, boolean> {
+  const role =
+    graph.clusters.find((cluster) => cluster.id === node.clusterId)?.role ??
+    null;
+  const rank = role ? ROLE_RANK[role] : 0;
+  const human = graph.viewer.kind === "human";
+  if (node.kind === "memory") {
+    // Only current (approved) memories are nodes; suspended ones live on the project page.
+    return {
+      report: node.status === "current",
+      suspend:
+        human && node.status === "current" && rank >= ROLE_RANK.contributor,
+      reinstate: false,
+      revoke: human && node.status === "current" && rank >= ROLE_RANK.reviewer,
+    };
+  }
+  if (isDefinitionKind(node.kind)) {
+    return {
+      retire:
+        human && node.status === "active" && rank >= ROLE_RANK.contributor,
+    };
+  }
+  return {};
+}
+
 /** What the page's script draws. Built only from the caller's network, so it holds nothing more. */
 export function networkPayload(
   graph: NetworkGraph,
   focus: string | null,
   select: string | null,
+  csrf = "",
 ) {
   const clusterIds = new Set(graph.clusters.map((cluster) => cluster.id));
   const nodeIds = new Set(graph.nodes.map((node) => node.id));
+  const viewer = {
+    id: graph.viewer.id,
+    displayName: graph.viewer.displayName,
+    kind: graph.viewer.kind,
+  };
+  const clusters = graph.clusters.map((cluster) => {
+    const scope: ScopeRef = { level: cluster.level, id: cluster.recordId };
+    return {
+      ...cluster,
+      href: scopePath(scope),
+      definitionsHref: definitionsPath(scope),
+    };
+  });
+  const nodes = graph.nodes.map((node) => ({
+    ...node,
+    details: previewDetails(node),
+    href: nodeHref(node),
+    actions: nodeActions(graph, node),
+  }));
   return {
     generatedAt: graph.generatedAt.toISOString(),
+    // Same records, same version: the live check compares it instead of the whole map.
+    version: createHash("sha256")
+      .update(
+        JSON.stringify([
+          graph.organization,
+          viewer,
+          clusters,
+          nodes,
+          graph.edges,
+        ]),
+      )
+      .digest("hex")
+      .slice(0, 24),
+    csrf,
     organization: graph.organization,
-    viewer: {
-      id: graph.viewer.id,
-      displayName: graph.viewer.displayName,
-      kind: graph.viewer.kind,
-    },
+    viewer,
     focus: focus !== null && clusterIds.has(focus) ? focus : null,
     select: select !== null && nodeIds.has(select) ? select : null,
-    clusters: graph.clusters.map((cluster) => {
-      const scope: ScopeRef = { level: cluster.level, id: cluster.recordId };
-      return {
-        ...cluster,
-        href: scopePath(scope),
-        definitionsHref: definitionsPath(scope),
-      };
-    }),
-    nodes: graph.nodes.map((node) => ({
-      ...node,
-      details: previewDetails(node),
-      href: nodeHref(node),
-    })),
+    clusters,
+    nodes,
     edges: graph.edges,
     legend: {
       nodes: NODE_INFO,
@@ -155,24 +206,28 @@ function listAlternative(graph: NetworkGraph): SafeHtml {
     <h3>Nodes</h3>
     ${table(
       ["Name", "Kind", "Group", "Status"],
-      graph.nodes.slice(0, LIST_LIMIT).map((node) => [
-        nodeCell(node.id),
-        html`${NODE_INFO[node.kind].label}`,
-        html`${clusterName.get(node.clusterId) ?? "—"}`,
-        html`${node.status ?? ""}`,
-      ]),
+      graph.nodes
+        .slice(0, LIST_LIMIT)
+        .map((node) => [
+          nodeCell(node.id),
+          html`${NODE_INFO[node.kind].label}`,
+          html`${clusterName.get(node.clusterId) ?? "—"}`,
+          html`${node.status ?? ""}`,
+        ]),
       "Nothing you can see here yet.",
     )}
     ${more(graph.nodes.length, "nodes")}
     <h3>Connections</h3>
     ${table(
       ["From", "Connection", "To", "Why it is here"],
-      graph.edges.slice(0, LIST_LIMIT).map((edge) => [
-        nodeCell(edge.from),
-        html`${RELATION_INFO[edge.relation].label}`,
-        nodeCell(edge.to),
-        html`${edge.why} <small>(${edge.table})</small>`,
-      ]),
+      graph.edges
+        .slice(0, LIST_LIMIT)
+        .map((edge) => [
+          nodeCell(edge.from),
+          html`${RELATION_INFO[edge.relation].label}`,
+          nodeCell(edge.to),
+          html`${edge.why} <small>(${edge.table})</small>`,
+        ]),
       "No connections.",
     )}
     ${more(graph.edges.length, "connections")}
@@ -406,6 +461,7 @@ const SHORTCUTS: ReadonlyArray<readonly [readonly string[], string]> = [
   [["I"], "What depends on the selection"],
   [["P"], "Pin the selection to compare"],
   [["H"], "Show or hide people and agent accounts"],
+  [["R"], "Replay how the map grew, oldest first"],
   [["Z"], "Zoom to the selection"],
   [["0"], "Fit everything"],
   [["+", "−"], "Zoom in or out"],
@@ -446,7 +502,7 @@ function toolbar(graph: NetworkGraph): SafeHtml {
         aria-expanded="false"
         aria-controls="net-search-results"
         aria-autocomplete="list"
-        placeholder="Find anything: a rule, agent, memory, person… or a command"
+        placeholder="Find anything or run a command"
         autocomplete="off"
       />
       <kbd aria-hidden="true">⌘K</kbd>
@@ -466,7 +522,9 @@ function toolbar(graph: NetworkGraph): SafeHtml {
         aria-label="Back"
         title="Back ( [ )"
         disabled
-      >${interfaceIcon("back")}</button>
+      >
+        ${interfaceIcon("back")}
+      </button>
       <button
         type="button"
         class="icon-button"
@@ -474,12 +532,14 @@ function toolbar(graph: NetworkGraph): SafeHtml {
         aria-label="Forward"
         title="Forward ( ] )"
         disabled
-      >${interfaceIcon("forward")}</button>
+      >
+        ${interfaceIcon("forward")}
+      </button>
     </div>
     <div class="net-tools">
       ${viewMenu(graph)}
       <details class="net-menu" id="net-views-menu">
-        <summary>Saved views</summary>
+        <summary title="Saved views">Views</summary>
         <div class="net-menu-panel">
           <h2>Save this view</h2>
           <form id="net-save-view">
@@ -533,9 +593,9 @@ const TRACE_PANEL = html`<div class="net-empty-state">
     never an explanation of how the model reasoned.
   </p>
   <p>
-    Nothing is recorded yet because no AI tool connects to MemoryNet yet.
-    Retrieval records arrive with search and the Copilot connection (development
-    plan Steps 3 and 4).
+    Nothing is recorded yet because no AI tool has connected to MemoryNet yet.
+    Retrieval records appear here as soon as an AI tool searches through the MCP
+    connection.
   </p>
   <p class="hint">Until then this view stays empty instead of guessing.</p>
 </div>`;
@@ -543,15 +603,16 @@ const TRACE_PANEL = html`<div class="net-empty-state">
 async function networkPage(rc: RequestContext): Promise<WebResponse> {
   const user = requireUser(rc);
   const evidenceView = rc.req.query.get("evidence") === "all";
-  const graph = await getNetwork(rc.ctx, user.id, rc.params.id ?? "", {includeUncitedSources:evidenceView});
+  const graph = await getNetwork(rc.ctx, user.id, rc.params.id ?? "", {
+    includeUncitedSources: evidenceView,
+  });
   const organization = graph.organization;
   const payload = networkPayload(
     graph,
     rc.req.query.get("focus"),
     rc.req.query.get("node"),
+    rc.session?.csrfToken ?? "",
   );
-  const count = (kinds: readonly string[]) =>
-    graph.nodes.filter((node) => kinds.includes(node.kind)).length;
   return page(rc, {
     title: `${organization.name} network`,
     workspace: true,
@@ -595,7 +656,7 @@ async function networkPage(rc: RequestContext): Promise<WebResponse> {
             hidden
           ></div>
 
-          <header class="net-hud net-head glass">
+          <header class="net-hud net-head panel">
             <p class="net-eyebrow">
               <a href="/orgs/${organization.id}">Organization</a>
               <span aria-hidden="true">/</span> Network
@@ -606,25 +667,45 @@ async function networkPage(rc: RequestContext): Promise<WebResponse> {
               <strong>${graph.edges.length}</strong> connections ·
               <strong>${graph.clusters.length}</strong> groups
             </p>
-            <p class="net-live">
-              <span class="net-live-dot" aria-hidden="true"></span> Only what
-              you may see
+            <p
+              class="net-live"
+              id="net-live"
+              title="While the map is open it checks for changes every 15 seconds, with the same permission checks as this page."
+            >
+              <span class="net-live-dot" aria-hidden="true"></span
+              ><span id="net-live-text">Only what you may see</span>
             </p>
             ${attention(graph)}
-            <a class="net-evidence-toggle" href="/orgs/${organization.id}/network?evidence=${evidenceView ? "cited" : "all"}">${evidenceView ? "Show cited evidence only" : "Explore all source evidence"}</a>
-            ${evidenceView ? html`<p class="hint">Source evidence view. Merged PRs are not locally approved decisions. Up to 200 sources per repository.</p>` : ""}
+            <a
+              class="net-evidence-toggle"
+              href="/orgs/${organization.id}/network?evidence=${evidenceView
+                ? "cited"
+                : "all"}"
+              >${evidenceView
+                ? "Show cited evidence only"
+                : "Explore all source evidence"}</a
+            >
+            ${evidenceView
+              ? html`<p class="hint">
+                  Source evidence view. Merged PRs are not locally approved
+                  decisions. Up to 200 sources per repository.
+                </p>`
+              : ""}
           </header>
 
-          <div class="net-hud net-topbar glass" id="net-topbar">
+          <div class="net-hud net-topbar panel" id="net-topbar">
             ${toolbar(graph)}
           </div>
 
-          <aside class="net-hud net-inspector glass" id="net-inspector">
+          <aside
+            class="net-hud net-inspector panel collapsed"
+            id="net-inspector"
+          >
             <button
               type="button"
               class="net-inspector-toggle"
               id="net-inspector-toggle"
-              aria-expanded="true"
+              aria-expanded="false"
               aria-controls="net-details"
               title="Show or hide details"
             >
@@ -640,39 +721,71 @@ async function networkPage(rc: RequestContext): Promise<WebResponse> {
             </div>
           </aside>
 
-          <div class="net-hud net-legend-dock glass">
+          <div class="net-hud net-legend-dock panel">
             ${memoryLegend(graph)}
-            <p class="net-legend-title">Colours</p>
-            <ul class="net-key" id="net-key" aria-label="Colour key"></ul>
-            <p class="net-legend-note">
-              ${count(["memory"])} memories · ${count(["source"])} pull
-              requests
-            </p>
+            <details class="net-key-wrap">
+              <summary>Key</summary>
+              <ul class="net-key" id="net-key" aria-label="Colour key"></ul>
+              <ul class="net-key net-key-lines" aria-label="Connection key">
+                <li>
+                  <span class="net-key-line is-cites" aria-hidden="true"></span
+                  >Cites evidence
+                </li>
+                <li>
+                  <span class="net-key-line is-uses" aria-hidden="true"></span
+                  >Based on, uses, follows
+                </li>
+                <li>
+                  <span class="net-key-line is-owns" aria-hidden="true"></span
+                  >Owns
+                </li>
+                <li>
+                  <span class="net-key-line is-signal" aria-hidden="true"></span
+                  >Moving light: recent activity
+                </li>
+              </ul>
+            </details>
           </div>
 
           <div class="net-hud net-controls">
-            <div class="net-zoom glass">
+            <div class="net-zoom panel">
               <button
                 type="button"
                 id="net-zoom-in"
                 aria-label="Zoom in"
                 title="Zoom in (+)"
-              >${interfaceIcon("plus")}</button>
+              >
+                ${interfaceIcon("plus")}
+              </button>
               <button
                 type="button"
                 id="net-zoom-out"
                 aria-label="Zoom out"
                 title="Zoom out (−)"
-              >${interfaceIcon("minus")}</button>
+              >
+                ${interfaceIcon("minus")}
+              </button>
               <button
                 type="button"
                 id="net-fit"
                 aria-label="Fit all"
                 title="Fit all (0)"
-              >${interfaceIcon("fit")}</button>
+              >
+                ${interfaceIcon("fit")}
+              </button>
+              <button
+                type="button"
+                id="net-full"
+                aria-label="Full screen"
+                aria-pressed="false"
+                title="Full screen"
+                hidden
+              >
+                ${interfaceIcon("expand")}
+              </button>
             </div>
             <div
-              class="net-minimap glass"
+              class="net-minimap panel"
               id="net-minimap"
               aria-hidden="true"
               hidden
@@ -692,7 +805,7 @@ async function networkPage(rc: RequestContext): Promise<WebResponse> {
           </div>
 
           <div
-            class="net-hud net-compare glass"
+            class="net-hud net-compare panel"
             id="net-compare"
             aria-label="Pinned side by side"
             hidden
@@ -719,11 +832,45 @@ async function networkPage(rc: RequestContext): Promise<WebResponse> {
   });
 }
 
+/**
+ * The same payload as the page, for the map to stay current while it is open. It is built with
+ * the same permission checks every time and answers 304 while the records are unchanged.
+ */
+async function networkLive(rc: RequestContext): Promise<WebResponse> {
+  const user = requireUser(rc);
+  const graph = await getNetwork(rc.ctx, user.id, rc.params.id ?? "", {
+    includeUncitedSources: rc.req.query.get("evidence") === "all",
+  });
+  const payload = networkPayload(
+    graph,
+    null,
+    null,
+    rc.session?.csrfToken ?? "",
+  );
+  const tag = `"${payload.version}"`;
+  const headers = { ...SECURITY_HEADERS, ETag: tag, Vary: "Cookie" };
+  if (rc.req.headers["if-none-match"] === tag) {
+    return { status: 304, headers, body: "" };
+  }
+  return {
+    status: 200,
+    headers: { ...headers, "Content-Type": "application/json; charset=utf-8" },
+    body: JSON.stringify(payload),
+  };
+}
+
 export const networkRoutes: readonly Route[] = [
   {
     method: "GET",
     pattern: /^\/orgs\/(?<id>[^/]+)\/network$/,
     access: "user",
     handle: networkPage,
+  },
+  {
+    method: "GET",
+    pattern: /^\/orgs\/(?<id>[^/]+)\/network\/live$/,
+    access: "user",
+    data: true,
+    handle: networkLive,
   },
 ];

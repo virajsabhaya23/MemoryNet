@@ -7,8 +7,8 @@ import {
   ValidationError,
 } from "../../errors.ts";
 import {
-  approveProposal,
   editProposal,
+  getApprovalStatus,
   getMemory,
   getProposal,
   getProposalHistory,
@@ -16,7 +16,10 @@ import {
   listReviewQueue,
   listSources,
   MEMORY_TYPES,
+  approvalProgress,
+  recordApproval,
   rejectProposal,
+  searchReadableMemories,
   type Memory,
   type MemoryType,
   type Proposal,
@@ -29,12 +32,16 @@ import { listRetrievals, type RetrievalRecord } from "../../retrieval.ts";
 import {
   badge,
   html,
+  ledgerRow,
+  metaLine,
   options,
   preview,
+  recordHead,
   table,
   type SafeHtml,
 } from "../html.ts";
 import {
+  csrfField,
   formValue,
   page,
   postForm,
@@ -58,8 +65,19 @@ import {
 } from "../views.ts";
 import { applicabilityFields, applicabilityFromForm, applicabilitySummary, applicabilityView, proposalStatusBadge, TYPE_HINTS } from "./knowledge.ts";
 import { changeLabel } from "./memories.ts";
+import { relationFields, relationsFromForm, relationsView } from "../relations-view.ts";
 
 const DIFF_MARK = { added: "+", removed: "−", same: " " } as const;
+
+/** Current decisions in the same project and scope whose text matches the proposal's title. A review aid, not a retrieval. */
+async function similarDecisions(rc: RequestContext, proposal: Proposal): Promise<Memory[]> {
+  const caller = requireUser(rc);
+  const scope = proposal.applicability
+    ? { repositoryId: proposal.applicability.repositoryId, branch: proposal.applicability.branch, at: rc.ctx.now() }
+    : undefined;
+  const { matches } = await searchReadableMemories(rc.ctx.db, rc.ctx, caller, proposal.projectId, proposal.title, { current: 4, notCurrent: 0 }, scope);
+  return matches.filter((memory) => memory.status === "approved" && memory.id !== proposal.targetMemoryId && memory.id !== proposal.memoryId).slice(0, 3);
+}
 
 /** Receipts describe delivery only; they never stand in for a coding result. */
 function decisionInspector(
@@ -406,11 +424,15 @@ async function proposalPage(rc: RequestContext): Promise<WebResponse> {
   const receipts = await listRetrievals(rc.ctx, user.id, { projectId: proposal.projectId, limit: 200 });
   const people = await listProjectPeople(rc.ctx, user.id, proposal.projectId);
   const authors = new Set(history.map((version) => version.authoredBy));
+  const approval = proposal.status === "pending" && user.kind === "human"
+    ? await getApprovalStatus(rc.ctx, user.id, proposal.id)
+    : null;
   const names = await namesFor(rc, [
     proposal.ownerId,
     proposal.proposedBy,
     proposal.reviewedBy,
     ...history.flatMap((version) => [version.authoredBy, version.ownerId]),
+    ...(approval?.approvals.map((item) => item.reviewerId) ?? []),
   ]);
   const references = new Map(
     sources.map((source) => [source.id, source.reference]),
@@ -433,6 +455,9 @@ async function proposalPage(rc: RequestContext): Promise<WebResponse> {
     ? await applicabilityFields(rc, proposal.projectId, { value: proposal.applicability })
     : html`<p class="hint">This change inherits the target decision's exact applicability.
         A different repository, branch or interval requires a new decision.</p>`;
+  const relationEditor = mayEdit ? await relationFields(rc, proposal.projectId, proposal.relations, proposal.targetMemoryId) : html``;
+  const proposedRelations = await relationsView(rc, proposal.relations, "Proposed relations");
+  const similar = pending ? await similarDecisions(rc, proposal) : [];
   const current = history.at(-1);
   const previous = history.at(-2);
   const revisionField = html`<input
@@ -440,6 +465,35 @@ async function proposalPage(rc: RequestContext): Promise<WebResponse> {
     name="expectedRevision"
     value="${proposal.revision}"
   />`;
+  const approvedByMe = approval?.approvals.some((item) => item.reviewerId === user.id) ?? false;
+  const counting = approval?.approvals.filter((item) => item.counts) ?? [];
+  const lapsed = approval?.approvals.filter((item) => !item.counts) ?? [];
+  // The caller can approve, so their own approval always counts when they act.
+  const approvalCount = counting.length + (approvedByMe && !counting.some((item) => item.reviewerId === user.id) ? 1 : 0);
+  const required = approval?.required ?? 1;
+  const progress = approval
+    ? html`<p class="approval-progress">Approvals for version ${proposal.revision}: <strong>${counting.length} of ${required}</strong>
+        ${counting.length > 0 ? html` · ${counting.map((item) => nameOf(names, item.reviewerId)).join(", ")}` : ""}
+        ${lapsed.length > 0 ? html` · no longer counting: ${lapsed.map((item) => nameOf(names, item.reviewerId)).join(", ")}` : ""}</p>`
+    : "";
+  const approveLabel = approvedByMe
+    ? "Publish"
+    : approvalCount + 1 >= required
+      ? required > 1 ? "Approve and publish" : "Approve"
+      : `Approve (${approvalCount + 1} of ${required})`;
+  const approveForm = approvedByMe && approvalCount < required
+    ? html`<p class="hint">You approved version ${proposal.revision}. It needs ${required - approvalCount} more
+        approval${required - approvalCount === 1 ? "" : "s"} from different reviewers.</p>`
+    : postForm(
+        rc,
+        `/proposals/${proposal.id}/approve`,
+        html`${revisionField}
+          <label
+            >Reason (optional) <input name="reason" maxlength="500"
+          /></label>`,
+        approveLabel,
+        "stacked",
+      );
   const review = mayReview
     ? html`<section class="review">
         <h2>Review version ${proposal.revision}</h2>
@@ -447,16 +501,8 @@ async function proposalPage(rc: RequestContext): Promise<WebResponse> {
           Your decision applies to version ${proposal.revision} only. If someone
           saves a new version first, it is refused and you review again.
         </p>
-        ${postForm(
-          rc,
-          `/proposals/${proposal.id}/approve`,
-          html`${revisionField}
-            <label
-              >Reason (optional) <input name="reason" maxlength="500"
-            /></label>`,
-          "Approve",
-          "stacked",
-        )}
+        ${progress}
+        ${approveForm}
         ${postForm(
           rc,
           `/proposals/${proposal.id}/reject`,
@@ -469,7 +515,7 @@ async function proposalPage(rc: RequestContext): Promise<WebResponse> {
         )}
       </section>`
     : pending
-      ? html`<p class="hint">
+      ? html`${progress}<p class="hint">
           ${authors.has(user.id)
             ? "You wrote a version of this proposal, so a different reviewer must decide."
             : "A reviewer decides on this proposal."}
@@ -478,12 +524,12 @@ async function proposalPage(rc: RequestContext): Promise<WebResponse> {
   return page(rc, {
     title: proposal.title,
     crumbs: [...projectCrumbs(view), ["Proposal", `/proposals/${proposal.id}`]],
-    body: html`<p>
-        ${proposalStatusBadge(proposal.status)}
-        ${badge(typeLabel(proposal.type), "type")}
-        <span class="muted">version ${proposal.revision}</span>
-        ${flagBadges(proposal.flags)}
-      </p>
+    body: html`${recordHead({
+        kind: typeLabel(proposal.type),
+        title: proposal.title,
+        status: html`${proposalStatusBadge(proposal.status)} ${flagBadges(proposal.flags)}`,
+        meta: html`Version ${proposal.revision} · Proposed by ${nameOf(names, proposal.proposedBy)} · Project ${view.project.name}`,
+      })}
       <p class="hint">A proposal is not knowledge until it is approved.</p>
       ${modelLinked && pending
         ? html`<p class="hint">This model-generated proposal preserves its original sources and version.
@@ -497,6 +543,13 @@ async function proposalPage(rc: RequestContext): Promise<WebResponse> {
             the extraction distinguishes the exact supporting quotes.</p>`
         : ""}
       ${decisionInspector(proposal, target, receipts)}
+      ${proposedRelations}
+      ${similar.length === 0 ? "" : html`<section aria-label="Similar current decisions">
+        <h2>Similar current decisions</h2>
+        <ul>${similar.map((memory) => html`<li><a href="/memories/${memory.id}">${memory.title}</a> ${badge(typeLabel(memory.type), "type")}</li>`)}</ul>
+        <p class="hint">If this proposal changes one of these, propose a change to that decision instead,
+          so the old guidance is replaced rather than left to contradict the new one.</p>
+      </section>`}
       ${applicabilityView(proposal.applicability, rc.ctx.now(), proposal.status !== "approved")}
       ${changeSection(rc, proposal, target, mayEdit)}
       <section>
@@ -553,9 +606,11 @@ async function proposalPage(rc: RequestContext): Promise<WebResponse> {
           "No versions.",
         )}
       </section>
-      ${mayEdit ? editForm(rc, proposal, sources, people, editableApplicability) : ""}`,
+      ${mayEdit ? editForm(rc, proposal, sources, people, html`${editableApplicability}${relationEditor}`) : ""}`,
   });
 }
+
+const BATCH_LIMIT = 25;
 
 async function reviewQueuePage(rc: RequestContext): Promise<WebResponse> {
   const user = requireUser(rc);
@@ -571,42 +626,106 @@ async function reviewQueuePage(rc: RequestContext): Promise<WebResponse> {
     rc,
     queue.map((proposal) => proposal.proposedBy),
   );
+  const progress = await approvalProgress(rc.ctx, queue);
   const projectName = (id: string) => projects.get(id)?.name ?? "Unknown";
+  const batchable = (proposal: Proposal) => !needsIndividualReview(proposal) && !progress.get(proposal.id)?.counting.includes(user.id);
   return page(rc, {
     title: "Review",
-    body: html`<section>
+    body: html`<div class="review-layout">
+      <section class="review-queue">
         <h2>Waiting for your review</h2>
         <p class="hint">
           Pending proposals in projects where you are a reviewer, oldest first.
           Ones you wrote a version of are not listed.
         </p>
-        ${table(
-          ["Proposal", "Project", "Version", "Proposed by", "Waiting since"],
-          queue.map((proposal) => [
-            html`<a href="/proposals/${proposal.id}">${proposal.title}</a>
-              ${flagBadges(proposal.flags)}`,
-            html`<a href="/projects/${proposal.projectId}"
-              >${projectName(proposal.projectId)}</a
-            >`,
-            html`${proposal.revision}`,
-            html`${nameOf(names, proposal.proposedBy)}`,
-            html`${proposal.proposedAt}`,
-          ]),
-          "Nothing is waiting for your review.",
-        )}
+        <form method="post" action="/review/batch" class="stacked review-batch">
+          ${csrfField(rc)}
+          ${queue.length === 0
+            ? html`<p class="empty">Nothing is waiting for your review.</p>`
+            : html`<ul class="ledger">
+                ${queue.map((proposal) => {
+                  const count = progress.get(proposal.id);
+                  return ledgerRow({
+                    href: `/proposals/${proposal.id}`,
+                    title: html`${proposal.title} ${flagBadges(proposal.flags)}`,
+                    meta: html`${projectName(proposal.projectId)} · version ${proposal.revision} · by ${nameOf(names, proposal.proposedBy)}${names.get(proposal.proposedBy)?.kind === "agent" ? html` ${badge("agent", "agent")}` : ""} · ${preview(proposal.content, 140)}`,
+                    trailing: html`<span class="approval-progress">${count ? `${count.counting.length} of ${count.required}` : "0 of 1"}</span> ${batchable(proposal)
+                      ? html`<input type="checkbox" name="approve" value="${proposal.id}:${proposal.revision}" aria-label="Select ${proposal.title}" />`
+                      : html`<span class="muted" title="Flagged text or evidence, or already approved by you: review it on its own page">—</span>`}`,
+                  });
+                })}
+              </ul>`}
+          ${queue.some(batchable) ? html`<label class="choice"><input type="checkbox" name="confirm" value="yes" required />
+              I read the text and evidence of each selected proposal and approve exactly the version shown.</label>
+            <button type="submit" class="key">Approve selected</button>
+            <p class="hint">Each selection approves only the version listed, in its own step; a proposal that changed is refused.
+              Proposals whose text or evidence is flagged must be reviewed on their own page. At most ${BATCH_LIMIT} at a time.</p>` : ""}
+        </form>
+        <section>
+          <h2>Your proposals waiting for someone else</h2>
+          ${mine.length === 0
+            ? html`<p class="empty">None.</p>`
+            : html`<ul class="ledger">
+                ${mine.map((proposal) => ledgerRow({
+                  href: `/proposals/${proposal.id}`,
+                  title: proposal.title,
+                  meta: html`${projectName(proposal.projectId)} · version ${proposal.revision}`,
+                }))}
+              </ul>`}
+        </section>
       </section>
-      <section>
-        <h2>Your proposals waiting for someone else</h2>
-        ${table(
-          ["Proposal", "Project", "Version"],
-          mine.map((proposal) => [
-            html`<a href="/proposals/${proposal.id}">${proposal.title}</a>`,
-            html`${projectName(proposal.projectId)}`,
-            html`${proposal.revision}`,
-          ]),
-          "None.",
-        )}
-      </section>`,
+      <aside class="review-pane panel" aria-label="Reading pane">
+        ${queue[0]
+          ? html`<h2>Next up</h2>
+              <p class="review-pane-title">${queue[0].title}</p>
+              <p>${preview(queue[0].content, 280)}</p>
+              <p class="hint">${metaLine(html`${projectName(queue[0].projectId)} · version ${queue[0].revision} · proposed by ${nameOf(names, queue[0].proposedBy)} · since ${queue[0].proposedAt}`)}</p>
+              <p><a class="key key-primary" href="/proposals/${queue[0].id}">Read and decide</a></p>`
+          : html`<h2>Reading pane</h2><p>Nothing is waiting. When a proposal arrives, it opens here with its evidence and approval policy.</p>`}
+      </aside>
+    </div>`,
+  });
+}
+
+/** Flags that need a reviewer's full attention: on the proposal's own text or on any cited evidence. */
+const ATTENTION_FLAGS = new Set(["secret_removed", "personal_data", "instruction_like"]);
+function needsIndividualReview(proposal: Proposal): boolean {
+  return proposal.flags.some((flag) => ATTENTION_FLAGS.has(flag)) ||
+    proposal.evidence.some((item) => item.flags.some((flag) => ATTENTION_FLAGS.has(flag)));
+}
+
+async function batchAction(rc: RequestContext): Promise<WebResponse> {
+  const user = requireUser(rc);
+  if (rc.form.get("confirm") !== "yes") throw new ValidationError("Confirm that you reviewed each selected proposal");
+  const selected = rc.form.getAll("approve");
+  if (selected.length === 0) throw new ValidationError("Select at least one proposal");
+  if (selected.length > BATCH_LIMIT) throw new ValidationError(`Approve at most ${BATCH_LIMIT} proposals at a time`);
+  const results: Array<{ label: string; outcome: SafeHtml }> = [];
+  for (const value of selected) {
+    const match = /^([0-9a-f-]{36}):([1-9][0-9]{0,8})$/.exec(value);
+    if (!match) throw new ValidationError("Each selection names a proposal and its version");
+    const [, proposalId, revision] = match as unknown as [string, string, string];
+    try {
+      const proposal = await getProposal(rc.ctx, user.id, proposalId);
+      if (needsIndividualReview(proposal)) {
+        results.push({ label: proposal.title, outcome: html`${badge("not approved", "warn")} Proposals with flagged text or evidence need individual review.` });
+        continue;
+      }
+      const result = await recordApproval(rc.ctx, user.id, { proposalId, expectedRevision: Number(revision) });
+      results.push({ label: proposal.title, outcome: result.status === "published"
+        ? html`${badge("published", "ok")} <a href="/memories/${result.memory.id}">memory</a>`
+        : html`${badge("approval recorded", "type")} ${result.approvals} of ${result.required}` });
+    } catch (error) {
+      if (!(error instanceof MemoryNetError)) throw error;
+      results.push({ label: proposalId, outcome: html`${badge("refused", "warn")} ${error.message}` });
+    }
+  }
+  return page(rc, {
+    title: "Review results",
+    crumbs: [["Review", "/review"]],
+    body: html`<p class="notice" role="status">Review finished. Each proposal's result is listed below.</p>
+      ${table(["Proposal", "Result"], results.map((item) => [html`${item.label}`, item.outcome]), "Nothing was selected.")}
+      <p><a href="/review">Back to the review queue</a></p>`,
   });
 }
 
@@ -623,6 +742,7 @@ async function editAction(rc: RequestContext): Promise<WebResponse> {
   const changeNote = formValue(rc, "changeNote");
   const baseRevision = formValue(rc, "baseRevision");
   const applicability = applicabilityFromForm(rc);
+  const relations = relationsFromForm(rc);
   const proposal = await editProposal(rc.ctx, user.id, {
     proposalId: rc.params.id ?? "",
     expectedRevision: expectedRevision(rc),
@@ -632,6 +752,7 @@ async function editAction(rc: RequestContext): Promise<WebResponse> {
     evidenceSourceIds,
     ownerId: formValue(rc, "ownerId") ?? "",
     ...(applicability === undefined ? {} : { applicability }),
+    ...(relations === undefined ? {} : { relations }),
     ...(changeNote === undefined ? {} : { changeNote }),
     ...(baseRevision === undefined
       ? {}
@@ -642,12 +763,14 @@ async function editAction(rc: RequestContext): Promise<WebResponse> {
 
 async function approveAction(rc: RequestContext): Promise<WebResponse> {
   const user = requireUser(rc);
-  const memory = await approveProposal(rc.ctx, user.id, {
+  const result = await recordApproval(rc.ctx, user.id, {
     proposalId: rc.params.id ?? "",
     expectedRevision: expectedRevision(rc),
     reason: formValue(rc, "reason"),
   });
-  return redirect(`/memories/${memory.id}`, "approved");
+  return result.status === "published"
+    ? redirect(`/memories/${result.memory.id}`, "approved")
+    : redirect(`/proposals/${result.proposalId}`, "approval-recorded");
 }
 
 async function rejectAction(rc: RequestContext): Promise<WebResponse> {
@@ -737,6 +860,12 @@ export const reviewRoutes: readonly Route[] = [
     pattern: /^\/review$/,
     access: "user",
     handle: reviewQueuePage,
+  },
+  {
+    method: "POST",
+    pattern: /^\/review\/batch$/,
+    access: "user",
+    handle: batchAction,
   },
   {
     method: "GET",

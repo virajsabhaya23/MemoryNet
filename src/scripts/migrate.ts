@@ -1,10 +1,9 @@
-// Creates or updates the local embedded database. Synthetic data only.
-import { migrate, openDatabase } from "../db.ts";
+// Creates or updates the local embedded database, backing up an existing one first. Synthetic data only.
+import { openMigratedDatabase } from "../database-upgrade.ts";
 
 const dataDir = process.env.MEMORYNET_DATA_DIR ?? ".data/memorynet";
-const db = await openDatabase(dataDir);
+const { db, applied } = await openMigratedDatabase(dataDir);
 try {
-  const applied = await migrate(db);
   console.log(
     applied.length > 0
       ? `Applied migrations: ${applied.join(", ")}`

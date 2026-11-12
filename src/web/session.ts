@@ -18,12 +18,13 @@ export class SessionStore {
   }
 
   /** Always issues a new token, so an old or planted one can never become signed in. */
-  create(principalId: string): Session {
+  create(principalId: string, github?: Session["github"]): Session {
     const session: Session = {
       token: newToken(),
       principalId,
       csrfToken: newToken(),
       createdAt: this.#now(),
+      ...(github ? { github } : {}),
     };
     this.#sessions.set(session.token, session);
     return session;
@@ -38,6 +39,11 @@ export class SessionStore {
       return null;
     }
     return session;
+  }
+
+  /** Sessions that have not expired, dropping expired ones. */
+  active(): Session[] {
+    return [...this.#sessions.keys()].map((token) => this.find(token)).filter((session) => session !== null);
   }
 
   delete(token: string): void {

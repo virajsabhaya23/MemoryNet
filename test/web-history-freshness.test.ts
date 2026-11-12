@@ -162,7 +162,7 @@ test("suspended and replaced memories are clearly marked and not listed as curre
   await loadExample(app);
   const checkout = await idOf(env.db, "projects", "checkout");
   const id = await memoryId(RETRY);
-  const agent = await as(app, env.db, "Copilot Agent");
+  const agent = await as(app, env.db, "Coding Agent");
   assert.doesNotMatch((await agent.get(`/memories/${id}`)).body, />Suspend</);
   const reported = await agent.post(`/memories/${id}/report`, {
     reason: "Synthetic: defaults changed",

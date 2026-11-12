@@ -28,10 +28,12 @@ Tests use isolated synthetic databases. A model key, GitHub account, and running
 
 The [documentation index](docs/README.md) lists the public installation, usage, API, and contributor guides. Keep those accurate for a fresh checkout. Document supported behavior and limitations; distinguish implemented features from proposals.
 
-The documentation allowlist in `.gitignore` keeps unreviewed documents out of the public tree. Update it when adding a necessary public guide. Personal notes, research, roadmap drafts, interview material, historical execution logs, and internal release evidence belong in the separate MemoryNet-Lab workspace, outside this checkout.
+The documentation allowlist in `.gitignore` keeps unreviewed documents out of the public tree. Update it when adding a necessary public guide. Personal notes, research, roadmap drafts, interview material, historical execution logs, and internal release evidence belong in a separate development workspace, outside this checkout.
 
 Use synthetic fixtures or attributed public material. Keep credentials, generated bindings, databases, backups, recordings, and private evidence out of commits. The app is a loopback-only local prototype; private organizational data and shared hosting are unsupported.
 
-## License
+## Contributor License Agreement
 
-Contributions intentionally submitted for inclusion are provided under the project's [Apache-2.0 license](LICENSE), as described in section 5. Submit only work you have the right to contribute. This does not transfer your copyright. Preserve bundled third-party licenses and attribution.
+Before a pull request can be merged, its author and every human commit author must agree once to the [MemoryNet Contributor License Agreement](CLA.md) by posting the comment the CLA check asks for. You keep your copyright. The agreement licenses your contribution to the maintainer, including the right to license MemoryNet under other terms later; versions already published under Apache-2.0 stay available under Apache-2.0. The check reads pull-request metadata only, records agreements on the `cla-signatures` branch, and exempts maintainers listed in `.github/TEAM_MEMBERS`.
+
+Submit only work you have the right to contribute, and identify any third-party material and its license in the pull request. If an AI coding assistant materially contributed to a change, disclose it in the commit metadata, for example with a `Co-authored-by:` trailer.

@@ -3,7 +3,7 @@ import { createHash } from "node:crypto";
 import { lstat, mkdir, readFile, realpath, rm, writeFile } from "node:fs/promises";
 import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 
-const ROOT_FILES = new Set([".env.example", ".gitignore", "README.md", "CHANGELOG.md", "CONTRIBUTING.md", "LICENSE", "SECURITY.md", "THIRD_PARTY_NOTICES.md", "package.json", "package-lock.json", "tsconfig.json"]);
+const ROOT_FILES = new Set([".env.example", ".gitattributes", ".gitignore", "README.md", "DEMO.md", "RELEASE_VALIDATION.md", "CHANGELOG.md", "CLA.md", "CONTRIBUTING.md", "LICENSE", "NOTICE", "SECURITY.md", "THIRD_PARTY_NOTICES.md", "design.md", "package.json", "package-lock.json", "tsconfig.json"]);
 const PUBLIC_FOLDERS = new Set(["src", "test", "migrations", "docs", "examples", "website", ".github"]);
 const credential = /(?:gh[pousr]_[A-Za-z0-9]{30,}|github_pat_[A-Za-z0-9_]{40,}|sk-(?:proj-|ant-)?[A-Za-z0-9_-]{32,}|-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----)/;
 

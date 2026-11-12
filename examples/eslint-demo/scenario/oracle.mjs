@@ -16,7 +16,9 @@ delete environment.ESLINT_FLAGS;
 const execute = (command, args, input, extraEnv = {}) => {
   const result = spawnSync(command, args, {
     cwd: directory, env: { ...environment, ...extraEnv }, input,
-    encoding: "utf8", timeout: 30_000, maxBuffer: 1_000_000
+    encoding: "utf8", timeout: 30_000, maxBuffer: 1_000_000,
+    // npm is a .cmd shim on Windows, which Node refuses to launch without a shell.
+    shell: process.platform === "win32" && command === "npm",
   });
   return { command: [command, ...args], exitCode: result.status, stdout: result.stdout, stderr: result.stderr, error: result.error?.message ?? null };
 };

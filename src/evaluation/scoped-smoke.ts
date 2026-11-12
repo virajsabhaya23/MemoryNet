@@ -47,7 +47,7 @@ export async function runScopedContextSmoke() {
         stderr: "pipe", maxBufferSize: 512_000,
       }));
       const tools = await client.listTools();
-      assert.deepEqual(tools.tools.map((tool) => tool.name), ["get_context"]);
+      assert.deepEqual(tools.tools.map((tool) => tool.name), ["revalidate_context", "get_context", "get_task_context"]);
       return client;
     }
     async function retrieve(client: Client, event: string) {

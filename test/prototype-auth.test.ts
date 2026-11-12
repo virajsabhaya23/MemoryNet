@@ -35,6 +35,9 @@ test("prototype configuration refuses credentials readable by other users",async
   const accessKeyFile=join(dir,"key.txt"),file=join(dir,"config.json");await writeFile(accessKeyFile,key,{mode:0o600});
   await writeFile(file,JSON.stringify({dataDir:dir,principalId:"00000000-0000-4000-8000-000000000001",login:"operator",githubUserId:"123",accessKeyFile,checkoutManifestFile:join(dir,"catalog.json")}),{mode:0o600});
   assert.equal((await loadPrototypeConfig(file)).accessKeyHash,createHash("sha256").update(key).digest("hex"));
-  await chmod(accessKeyFile,0o644);await assert.rejects(loadPrototypeConfig(file),/owner-only/);
+  assert.equal((await loadPrototypeConfig(file,false)).accessKeyHash,undefined,"local mode never reads the access key");
+  if(process.platform!=="win32"){await chmod(accessKeyFile,0o644);await assert.rejects(loadPrototypeConfig(file),/owner-only/);}
+  await rm(accessKeyFile);
+  assert.equal((await loadPrototypeConfig(file,false)).principalId,"00000000-0000-4000-8000-000000000001","local access works even when the legacy key is absent");
  }finally{await rm(dir,{recursive:true,force:true});}
 });

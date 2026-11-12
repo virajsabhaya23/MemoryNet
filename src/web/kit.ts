@@ -1,3 +1,5 @@
+import { createHash } from "node:crypto";
+import { readFileSync } from "node:fs";
 import type { CheckoutCatalog } from "../repository-checkouts.ts";
 import type { Principal } from "../access.ts";
 import type { MemoryNetContext } from "../context.ts";
@@ -7,6 +9,12 @@ import { readCookie } from "./session.ts";
 
 /** MemoryNet's local HTTP port. */
 export const APP_PORT = 3050;
+
+// Browsers keep favicons for days; a new icon gets a new address.
+export const FAVICON_HREF = `/assets/brand/icon.svg?v=${createHash("sha256")
+  .update(readFileSync(new URL("./assets/brand/icon.svg", import.meta.url)))
+  .digest("hex")
+  .slice(0, 10)}`;
 
 export const THEME_COOKIE = "mn_theme";
 export const THEMES = ["system", "light", "dark"] as const;
@@ -49,6 +57,12 @@ export interface Session {
   principalId: string;
   csrfToken: string;
   createdAt: number;
+  /** Present after GitHub sign-in. The token stays in server memory and is never rendered or stored. */
+  github?: {
+    readonly token: string;
+    readonly login: string;
+    readonly userId: string;
+  };
 }
 
 export interface RequestContext {
@@ -67,7 +81,13 @@ export interface RequestContext {
   /** Local Meta workflow routes are registered by the server. */
   decisionGuardAvailable?: boolean;
   checkouts?: CheckoutCatalog;
-  prototype?: {principalId:string;login:string};
+  prototype?: { principalId: string; login: string };
+  /** GitHub sign-in is configured: persona selection, access keys and System controls are off. */
+  github?: boolean;
+  /** Single local operator; no application sign-in or persona switching. */
+  local?: boolean;
+  /** Shell data computed once per page request; absent when it could not be loaded. */
+  shell?: { reviewCount: number; primaryOrganizationId: string | null };
 }
 
 /** public: anyone. user: a signed-in person or agent. system: the System page, which stands in for GitHub. */
@@ -78,6 +98,8 @@ export interface Route {
   /** Anchored pattern. Named groups become params. */
   pattern: RegExp;
   access: RouteAccess;
+  /** Answers with data, not a page, so it needs none of the page's navigation counts. */
+  data?: boolean;
   handle(rc: RequestContext): Promise<WebResponse>;
 }
 
@@ -106,6 +128,11 @@ const NOTICES: Readonly<Record<string, string>> = {
   "proposed-by-agent":
     "Proposal sent for review. Agents cannot see proposals, so it is not listed for you.",
   approved: "Approved. This memory is now knowledge, with its own ID.",
+  "approval-recorded":
+    "Approval recorded for this exact version. It is published once enough different reviewers approve the same version.",
+  "policy-saved":
+    "Review policy saved as a new version. It applies to approvals from now on.",
+  "batch-reviewed": "Review finished. Each proposal's result is listed below.",
   rejected:
     "Proposal rejected. It stays as a review record and is not knowledge.",
   "pr-captured":
@@ -131,17 +158,143 @@ const NOTICES: Readonly<Record<string, string>> = {
     "Proposal rejected. It stays as a review record and changes nothing.",
 };
 
-const NAV: ReadonlyArray<readonly [string, string, string]> = [
-  ["Organizations", "/", "organization"], ["Review", "/review", "review"], ["System", "/system", "system"],
-];
+export type ScopeLevelName = "organization" | "business_unit" | "project";
+
+/** The scope a URL lives inside, if any. Mirrors the route patterns; names come from pages, not here. */
+export function scopeFromPath(
+  path: string,
+): { level: ScopeLevelName; id: string } | null {
+  const scoped =
+    /^\/scopes\/(organization|business_unit|project)\/([^/]+)/.exec(path);
+  if (scoped) return { level: scoped[1] as ScopeLevelName, id: scoped[2]! };
+  const org = /^\/orgs\/([^/]+)/.exec(path);
+  if (org) return { level: "organization", id: org[1]! };
+  const unit = /^\/business-units\/([^/]+)/.exec(path);
+  if (unit) return { level: "business_unit", id: unit[1]! };
+  const project = /^\/projects\/([^/]+)/.exec(path);
+  if (project) return { level: "project", id: project[1]! };
+  return null;
+}
+
+interface NavLink {
+  label: string;
+  href: string;
+  icon: string;
+}
+
+function contextLinks(
+  rc: RequestContext,
+): { heading: string; links: NavLink[] } | null {
+  const scope = scopeFromPath(rc.req.path);
+  if (!scope) return null;
+  if (scope.level === "organization") {
+    return {
+      heading: "This organization",
+      links: [
+        { label: "Overview", href: `/orgs/${scope.id}`, icon: "organization" },
+        {
+          label: "Network",
+          href: `/orgs/${scope.id}/network`,
+          icon: "network",
+        },
+        {
+          label: "Your network",
+          href: `/orgs/${scope.id}/you`,
+          icon: "person",
+        },
+        {
+          label: "Definitions",
+          href: `/scopes/organization/${scope.id}/definitions`,
+          icon: "instruction",
+        },
+        {
+          label: "Integrity",
+          href: `/orgs/${scope.id}/integrity`,
+          icon: "rule",
+        },
+      ],
+    };
+  }
+  if (scope.level === "business_unit") {
+    return {
+      heading: "This business unit",
+      links: [
+        {
+          label: "Overview",
+          href: `/business-units/${scope.id}`,
+          icon: "business_unit",
+        },
+        {
+          label: "Definitions",
+          href: `/scopes/business_unit/${scope.id}/definitions`,
+          icon: "instruction",
+        },
+        {
+          label: "Roles",
+          href: `/scopes/business_unit/${scope.id}/roles`,
+          icon: "person",
+        },
+      ],
+    };
+  }
+  const links: NavLink[] = [
+    {
+      label: "Knowledge",
+      href: `/projects/${scope.id}#current-knowledge`,
+      icon: "memory",
+    },
+    {
+      label: "Definitions",
+      href: `/scopes/project/${scope.id}/definitions`,
+      icon: "instruction",
+    },
+    {
+      label: "Evidence",
+      href: `/projects/${scope.id}#evidence`,
+      icon: "source",
+    },
+    { label: "Work", href: `/projects/${scope.id}/work`, icon: "project" },
+    { label: "Search", href: `/projects/${scope.id}/search`, icon: "memory" },
+    {
+      label: "Activity",
+      href: `/projects/${scope.id}/retrievals`,
+      icon: "review",
+    },
+  ];
+  if (rc.decisionGuardAvailable && rc.user?.kind === "human") {
+    links.push({
+      label: "Decision Guard",
+      href: `/projects/${scope.id}/decision-guard`,
+      icon: "agent",
+    });
+  }
+  return { heading: "This project", links };
+}
 
 export function interfaceIcon(name: string): SafeHtml {
-  return html`<svg class="interface-icon" width="20" height="20" viewBox="-12 -12 24 24" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" stroke-width="1.65" stroke-linecap="round" stroke-linejoin="round"><path d="${ICON_PATHS[name] ?? ICON_PATHS.project}" /></svg>`;
+  return html`<svg
+    class="interface-icon"
+    width="20"
+    height="20"
+    viewBox="-12 -12 24 24"
+    aria-hidden="true"
+    focusable="false"
+    fill="none"
+    stroke="currentColor"
+    stroke-width="1.65"
+    stroke-linecap="round"
+    stroke-linejoin="round"
+  >
+    <path d="${ICON_PATHS[name] ?? ICON_PATHS.project}" />
+  </svg>`;
 }
 const navIcon = interfaceIcon;
 
 export function initialsOf(name: string): string {
-  const parts = name.trim().split(/\s+/).filter((part) => part !== "");
+  const parts = name
+    .trim()
+    .split(/\s+/)
+    .filter((part) => part !== "");
   const first = parts[0]?.[0] ?? "?";
   const last = parts.length > 1 ? (parts[parts.length - 1]?.[0] ?? "") : "";
   return `${first}${last}`.toUpperCase();
@@ -307,7 +460,7 @@ function layout(rc: RequestContext, options: PageOptions): SafeHtml {
         <title>${options.title} · MemoryNet</title>
         <link
           rel="preload"
-          href="/assets/fonts/ibm-plex-sans-latin-variable.woff2"
+          href="/assets/fonts/host-grotesk-latin-variable.woff2"
           as="font"
           type="font/woff2"
           crossorigin
@@ -315,7 +468,7 @@ function layout(rc: RequestContext, options: PageOptions): SafeHtml {
         <link rel="stylesheet" href="/assets/style.css" />
         <link
           rel="icon"
-          href="/assets/brand/icon.svg"
+          href="${FAVICON_HREF}"
           type="image/svg+xml"
           sizes="any"
         />
@@ -323,50 +476,211 @@ function layout(rc: RequestContext, options: PageOptions): SafeHtml {
       <body class="${options.immersive ? "immersive" : ""}">
         <a class="skip" href="#main">Skip to content</a>
         <header class="rail top">
-          <a class="brand" href="/" title="MemoryNet" aria-label="MemoryNet home"
+          <a
+            class="brand"
+            href="/"
+            title="MemoryNet"
+            aria-label="MemoryNet home"
             >${BRAND_MARK}<span class="brand-name">MemoryNet</span></a
           >
-          <nav aria-label="Main">
-            ${NAV.filter(([,href])=>!rc.prototype||href!=="/system").map(
-              ([label, href, icon]) =>
-                html`<a
-                  href="${href}"
-                  title="${label}"
-                  aria-label="${label}"
-                  ${isCurrent(rc, href) ? html`aria-current="page"` : ""}
-                  >${navIcon(icon)}<span class="nav-label">${label}</span></a
-                >`,
-            )}
-          </nav>
-          <div class="rail-foot">
-            <span class="tag" title="${rc.prototype ? "Secured local prototype using original public repository evidence" : "Local pilot: public or synthetic evidence only. Identity selection is not authentication."}"
-              ><span class="tag-text">${rc.prototype ? "Local prototype" : "Local pilot"}</span></span
-            >
-            ${themeSwitch(theme)}
-            ${user
-              ? html`<form class="who" method="post" action="/sign-out">
-                  <span class="avatar" aria-hidden="true"
-                    >${initialsOf(user.displayName)}</span
-                  >
-                  <span class="who-text"
-                    ><strong>${user.displayName}</strong>
-                    <small
-                      >(${user.kind === "agent" ? "agent" : "person"})</small
-                    ></span
-                  >
-                  ${csrfField(rc)}
-                  <button type="submit" class="secondary">${rc.prototype ? "Sign out" : "Switch person"}</button>
-                </form>`
-              : html`<span class="who"
-                  ><span class="avatar" aria-hidden="true">?</span
-                  ><span class="who-text">Not signed in</span></span
-                >`}
+          <button type="button" class="menu-button" popovertarget="rail-menu">
+            Menu
+          </button>
+          <div class="rail-menu" id="rail-menu" popover>
+            <nav aria-label="Main">
+              ${(() => {
+                const context = contextLinks(rc);
+                const scopeOrg = scopeFromPath(rc.req.path);
+                const orgId =
+                  rc.shell?.primaryOrganizationId ??
+                  (scopeOrg?.level === "organization" ? scopeOrg.id : null);
+                const reviewCount = rc.shell?.reviewCount ?? 0;
+                const showSystem = !(rc.local || rc.prototype || rc.github);
+                const link = (
+                  label: string,
+                  href: string,
+                  icon: string,
+                  current = isCurrent(rc, href.split("#")[0]!),
+                ) =>
+                  html`<a
+                    href="${href}"
+                    title="${label}"
+                    aria-label="${label}"
+                    ${current ? html`aria-current="page"` : ""}
+                    >${navIcon(icon)}<span class="nav-label">${label}</span></a
+                  >`;
+                const disabled = (label: string, icon: string, hint: string) =>
+                  html`<a aria-disabled="true" title="${hint}"
+                    >${navIcon(icon)}<span class="nav-label">${label}</span></a
+                  >`;
+                // Inside a scope, the scope's own section is where you are; Overview stays the start page.
+                const currentContextHref = context?.links.find(
+                  (item) => item.href.split("#")[0] === rc.req.path,
+                )?.href;
+                return html`<div class="nav-section" data-nav="work">
+                    <span class="nav-heading">Work</span>
+                    ${link(
+                      "Overview",
+                      "/",
+                      "organization",
+                      rc.req.path === "/" || (!context && isCurrent(rc, "/")),
+                    )}
+                    <a
+                      href="/review"
+                      title="Review"
+                      aria-label="Review"
+                      ${isCurrent(rc, "/review")
+                        ? html`aria-current="page"`
+                        : ""}
+                      >${navIcon("review")}<span class="nav-label">Review</span
+                      >${reviewCount > 0
+                        ? html`<span
+                            class="nav-count"
+                            data-review-count="${reviewCount}"
+                            >${reviewCount}</span
+                          >`
+                        : ""}</a
+                    >
+                    ${orgId
+                      ? link(
+                          "Network",
+                          `/orgs/${orgId}/network`,
+                          "network",
+                          rc.req.path === `/orgs/${orgId}/network`,
+                        )
+                      : disabled(
+                          "Network",
+                          "network",
+                          "Join an organization to open its network",
+                        )}
+                    ${orgId
+                      ? link(
+                          "Your network",
+                          `/orgs/${orgId}/you`,
+                          "person",
+                          rc.req.path === `/orgs/${orgId}/you`,
+                        )
+                      : disabled(
+                          "Your network",
+                          "person",
+                          "Join an organization to see your network",
+                        )}
+                  </div>
+                  ${context
+                    ? html`<div class="nav-section" data-nav="context">
+                        <span class="nav-heading">${context.heading}</span>
+                        ${context.links.map((item) =>
+                          link(
+                            item.label,
+                            item.href,
+                            item.icon,
+                            item.href === currentContextHref,
+                          ),
+                        )}
+                      </div>`
+                    : ""}
+                  ${showSystem
+                    ? html`<div class="nav-section" data-nav="system">
+                        ${link("System", "/system", "system")}
+                      </div>`
+                    : ""}`;
+              })()}
+            </nav>
+            <div class="rail-foot">
+              <span
+                class="tag"
+                title="${rc.local
+                  ? "Single-operator workspace on this computer. No app sign-in required."
+                  : rc.github
+                    ? "Signed in with GitHub; repository access is checked with GitHub"
+                    : rc.prototype
+                      ? "Secured local prototype using original public repository evidence"
+                      : "Local pilot: public or synthetic evidence only. Identity selection is not authentication."}"
+                ><span class="tag-text"
+                  >${rc.local
+                    ? "Local workspace"
+                    : rc.github
+                      ? "GitHub sign-in"
+                      : rc.prototype
+                        ? "Local prototype"
+                        : "Local pilot"}</span
+                ></span
+              >
+              ${themeSwitch(theme)}
+              ${rc.local && user
+                ? html`<div class="who">
+                    <span class="avatar" aria-hidden="true"
+                      >${initialsOf(user.displayName)}</span
+                    >
+                    <span class="who-text"
+                      ><strong>${user.displayName}</strong
+                      ><small>Local operator</small></span
+                    >
+                    <a href="/connections">Connections</a>
+                  </div>`
+                : user
+                  ? html`<form class="who" method="post" action="/sign-out">
+                      <span class="avatar" aria-hidden="true"
+                        >${initialsOf(user.displayName)}</span
+                      >
+                      <span class="who-text"
+                        ><strong>${user.displayName}</strong>
+                        <small
+                          >(${user.kind === "agent"
+                            ? "agent"
+                            : "person"})</small
+                        ></span
+                      >
+                      ${csrfField(rc)}
+                      <button type="submit" class="secondary">
+                        ${rc.prototype || rc.github
+                          ? "Sign out"
+                          : "Switch person"}
+                      </button>
+                    </form>`
+                  : html`<span class="who"
+                      ><span class="avatar" aria-hidden="true">?</span
+                      ><span class="who-text">Not signed in</span></span
+                    >`}
+            </div>
           </div>
         </header>
         <div class="workspace-bar" aria-label="Workspace context">
           <span>Engineering workspace</span>
           <span class="workspace-location">${options.title}</span>
-          <a href="/review">Review queue</a>
+          <details class="jump">
+            <summary>
+              <span>Jump to</span
+              ><span class="jump-keys" aria-hidden="true"
+                ><kbd>⌘</kbd><kbd>K</kbd></span
+              >
+            </summary>
+            <div class="jump-menu">
+              <a data-jump href="/">Overview</a>
+              <a data-jump href="/review">Review queue</a>
+              ${rc.shell?.primaryOrganizationId
+                ? html`<a
+                      data-jump
+                      href="/orgs/${rc.shell.primaryOrganizationId}/network"
+                      >Network</a
+                    ><a
+                      data-jump
+                      href="/orgs/${rc.shell.primaryOrganizationId}/you"
+                      >Your network</a
+                    >`
+                : ""}
+              ${(contextLinks(rc)?.links ?? []).map(
+                (item) =>
+                  html`<a data-jump href="${item.href}">${item.label}</a>`,
+              )}
+            </div>
+          </details>
+          <a href="/review"
+            >Review
+            queue${rc.shell && rc.shell.reviewCount > 0
+              ? html` (${rc.shell.reviewCount})`
+              : ""}</a
+          >
         </div>
         <main
           id="main"
@@ -385,6 +699,7 @@ function layout(rc: RequestContext, options: PageOptions): SafeHtml {
           ${notice ? html`<p class="notice" role="status">${notice}</p>` : ""}
           ${options.body}
         </main>
+        <script type="module" src="/assets/shell.js"></script>
       </body>
     </html>`;
 }

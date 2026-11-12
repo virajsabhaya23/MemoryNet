@@ -57,7 +57,7 @@ test("a definition's prompt anatomy shows seven blocks, live totals, and the ass
     view,
     scope: { level: "project", name: "Checkout" },
     nameOf: (id) =>
-      id === view.definition.runsAs ? "Copilot Agent" : "Rhea Reviewer",
+      id === view.definition.runsAs ? "Coding Agent" : "Rhea Reviewer",
   });
   assert.ok(
     reply.body.includes(escapeHtml(assembly.text)),

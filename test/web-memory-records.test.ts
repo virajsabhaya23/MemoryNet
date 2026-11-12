@@ -72,7 +72,7 @@ test("contributors record evidence and propose; readers see neither the forms no
   assert.doesNotMatch(readerView.body, /Propose a memory/);
   assert.doesNotMatch(readerView.body, /Refunds must be idempotent/);
   assert.equal((await rudy.get(`/proposals/${id}`)).status, 404);
-  const agent = await as(app, env.db, "Copilot Agent");
+  const agent = await as(app, env.db, "Coding Agent");
   assert.equal((await agent.get(`/proposals/${id}`)).status, 404);
 });
 
@@ -147,7 +147,7 @@ test("agents propose for a named person but cannot review", async () => {
   await loadExample(app);
   const checkout = await idOf(env.db, "projects", "checkout");
   const evidence = await sourceIdFor("pull/11", "1001");
-  const agent = await as(app, env.db, "Copilot Agent");
+  const agent = await as(app, env.db, "Coding Agent");
   const fields = {
     type: "rationale",
     title: "Backoff protects the payment queue",

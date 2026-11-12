@@ -22,6 +22,9 @@ test("Your network draws the viewer's places with same-origin scripts and opens 
   const olivia = await as(app, env.db, "Olivia Owner");
   const page = await olivia.get(`/orgs/${acme}/you`);
   assert.equal(page.status, 200);
+  assert.doesNotMatch(page.body, /\bglass\b/, "HUD panels are flat Cobalt, not glass");
+  const script = await olivia.get("/assets/my-network.js");
+  assert.match(script.body, /wrapTitle/);
   const policy = page.headers["Content-Security-Policy"] ?? "";
   assert.match(policy, /script-src 'self'/);
   assert.match(policy, /connect-src 'self'/);

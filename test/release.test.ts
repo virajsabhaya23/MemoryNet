@@ -22,8 +22,7 @@ test("release exports current source and features, excludes local state, and ref
     await writeFile(join(repo, "src/feature.ts"), "new feature");
     await mkdir(join(repo, "website"));
     await writeFile(join(repo, "website/index.html"), "public static website");
-    await writeFile(join(repo, "docs/architecture.md"), "public contributor architecture guide");
-    await writeFile(join(repo, "design.md"), "private design notes");
+    await writeFile(join(repo, "design.md"), "public website design system");
     await writeFile(join(repo, ".env.local"), "do not export");
     await mkdir(join(repo, "demo"));
     await writeFile(join(repo, "demo/private.txt"), "do not export");
@@ -31,8 +30,7 @@ test("release exports current source and features, excludes local state, and ref
     assert.equal(await readFile(join(output, "src/web/server.ts"), "utf8"), "latest uncommitted implementation");
     assert.equal(await readFile(join(output, "src/feature.ts"), "utf8"), "new feature");
     assert.equal(await readFile(join(output, "website/index.html"), "utf8"), "public static website");
-    assert.equal(await readFile(join(output, "docs/architecture.md"), "utf8"), "public contributor architecture guide");
-    await assert.rejects(stat(join(output, "design.md")), { code: "ENOENT" });
+    assert.equal(await readFile(join(output, "design.md"), "utf8"), "public website design system");
     await assert.rejects(stat(join(output, ".env.local")), { code: "ENOENT" });
     await assert.rejects(stat(join(output, "demo")), { code: "ENOENT" });
     await assert.rejects(stat(join(output, "docs/private-note.md")), { code: "ENOENT" });

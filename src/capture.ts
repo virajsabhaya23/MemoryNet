@@ -1,6 +1,7 @@
 import { recordAudit } from "./audit.ts";
 import {
   flagDetails,
+  mayContainInstructions,
   mayContainPersonalData,
   removeSecrets,
   type ContentFlag,
@@ -15,7 +16,7 @@ import {
   type Source,
   type SourceRow,
 } from "./knowledge.ts";
-import { PROVIDERS, type Provider } from "./repositories.ts";
+import type { Provider } from "./repositories.ts";
 import {
   isPullRequestUrl,
   requireCommitSha,
@@ -84,7 +85,7 @@ export async function captureMergedPullRequest(
   ctx: MemoryNetContext,
   event: MergedPullRequestEvent,
 ): Promise<CaptureResult> {
-  const provider = requireOneOf(event.provider, PROVIDERS, "provider");
+  const provider = requireOneOf(event.provider, ["github"] as const, "provider");
   const externalRepositoryId = requireGithubId(
     event.externalRepositoryId,
     "externalRepositoryId",
@@ -116,6 +117,7 @@ export async function captureMergedPullRequest(
   if (withoutSecrets.removed) flags.push("secret_removed");
   if (mayContainPersonalData(excerpt.text)) flags.push("personal_data");
   if (excerpt.cut) flags.push("truncated");
+  if (mayContainInstructions(excerpt.text)) flags.push("instruction_like");
 
   return ctx.db.transaction(async (tx): Promise<CaptureResult> => {
     const connected = await tx.query<{

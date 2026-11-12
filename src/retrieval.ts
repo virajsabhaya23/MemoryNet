@@ -1,3 +1,4 @@
+import { requireRepositoryId } from "./repository-identity.ts";
 import {
   requireCaller,
   requireRole,
@@ -11,6 +12,7 @@ import {
 } from "./content-checks.ts";
 import { accessFreshSince, type MemoryNetContext } from "./context.ts";
 import { firstRow, type Queryable } from "./db.ts";
+import type { DefinitionKind } from "./definitions.ts";
 import { MemoryNetError, UnavailableError, ValidationError } from "./errors.ts";
 import {
   findReadableMemory,
@@ -27,7 +29,7 @@ import {
   type MemoryType,
 } from "./knowledge.ts";
 import { MINIMUM_ROLE, ROLE_RANK } from "./roles.ts";
-import { optionalLimit, requireGithubId, requireId, requireText } from "./validation.ts";
+import { optionalLimit, requireId, requireText } from "./validation.ts";
 
 /** results: current guidance was supplied. no_results: none was. failed: nothing was searched. */
 export const RETRIEVAL_OUTCOMES = ["results", "no_results", "failed"] as const;
@@ -177,7 +179,7 @@ async function toNotCurrent(
   };
 }
 
-interface NewRecord {
+export interface NewRecord {
   projectId: string;
   callerId: string;
   terms: string | null;
@@ -189,9 +191,12 @@ interface NewRecord {
     revision: number;
     status: MemoryStatus;
   }>;
+  /** Definition versions delivered as reviewed guidance, in delivery order. */
+  definitions?: ReadonlyArray<{ definitionId: string; revision: number }>;
 }
 
-async function recordRetrieval(
+/** Writes one append-only receipt, its items and its delivered definitions. Call inside the retrieval's transaction. */
+export async function recordRetrieval(
   q: Queryable,
   record: NewRecord,
 ): Promise<string> {
@@ -213,9 +218,15 @@ async function recordRetrieval(
   );
   for (const [index, item] of record.items.entries()) {
     await q.query(
-      `INSERT INTO retrieval_items (retrieval_id, position, memory_id, revision, status)
-       VALUES ($1, $2, $3, $4, $5)`,
+      `INSERT INTO retrieval_items (retrieval_id, position, memory_id, revision, status, status_generation)
+       VALUES ($1, $2, $3, $4, $5, (SELECT status_generation FROM memories WHERE id=$3 AND current_revision=$4))`,
       [id, index + 1, item.memoryId, item.revision, item.status],
+    );
+  }
+  for (const [index, definition] of (record.definitions ?? []).entries()) {
+    await q.query(
+      "INSERT INTO retrieval_definitions (retrieval_id, position, definition_id, revision) VALUES ($1, $2, $3, $4)",
+      [id, index + 1, definition.definitionId, definition.revision],
     );
   }
   return id;
@@ -302,7 +313,7 @@ export async function getContext(
   if (input.applicability !== undefined) {
     const value = input.applicability;
     if (value === null || typeof value !== "object" || Array.isArray(value) || Object.keys(value).some((key) => !["repositoryId", "branch", "at"].includes(key))) throw new ValidationError("Invalid context applicability");
-    const repositoryId = requireGithubId(value.repositoryId, "repositoryId"), branch = requireDecisionBranch(value.branch);
+    const repositoryId = requireRepositoryId(value.repositoryId, "repositoryId"), branch = requireDecisionBranch(value.branch);
     const at = value.at === undefined ? observedAt : normalizeDecisionApplicability({ repositoryId, branch, validFrom: value.at })!.validFrom;
     if (!Number.isFinite(at.getTime()) || at.getTime() !== observedAt.getTime()) throw new ValidationError("Only current-time applicability queries are supported; historical/future reconstruction is unavailable");
     applicability = { repositoryId, branch, at };
@@ -364,6 +375,15 @@ export interface RetrievedItem {
   title: string;
 }
 
+/** A definition version a retrieval delivered as reviewed guidance. */
+export interface RetrievedDefinition {
+  definitionId: string;
+  revision: number;
+  kind: DefinitionKind;
+  /** The name of that version. */
+  name: string;
+}
+
 export interface RetrievalRecord {
   id: string;
   projectId: string;
@@ -374,6 +394,8 @@ export interface RetrievalRecord {
   retrievedAt: Date;
   /** What it returned that the viewer may read now. Anything else is left out without a trace. */
   items: RetrievedItem[];
+  /** Definitions it delivered that the viewer may see now, in delivery order. */
+  definitions: RetrievedDefinition[];
   applicability: DecisionContextScope | null;
 }
 
@@ -413,7 +435,7 @@ export async function listRetrievals(
      WHERE project_id = $1 AND ($2::boolean OR caller_id = $3)
        AND (rt.applicability IS NULL OR EXISTS(SELECT 1 FROM repository_connections rc JOIN repository_access ra
          ON ra.provider=rc.provider AND ra.external_repository_id=rc.external_repository_id
-         WHERE rc.project_id=rt.project_id AND rc.provider='github' AND rc.external_repository_id=rt.applicability->>'repositoryId'
+         WHERE rc.project_id=rt.project_id AND rc.external_repository_id=rt.applicability->>'repositoryId'
            AND rc.disconnected_at IS NULL AND ra.principal_id=$3 AND ra.can_read AND ra.observed_at >= $5))
      ORDER BY retrieved_at DESC, id DESC
      LIMIT $4`,
@@ -453,6 +475,30 @@ export async function listRetrievals(
     });
     byRetrieval.set(item.retrieval_id, list);
   }
+  // Same rule as definition pages: a role at the definition's level, above it, or inside it.
+  const delivered = await ctx.db.query<{
+    retrieval_id: string;
+    definition_id: string;
+    revision: number;
+    kind: DefinitionKind;
+    name: string;
+  }>(
+    `SELECT rd.retrieval_id, rd.definition_id, rd.revision, d.kind, dr.name
+     FROM retrieval_definitions rd
+     JOIN definitions d ON d.id = rd.definition_id
+     JOIN definition_revisions dr ON dr.definition_id = rd.definition_id AND dr.revision = rd.revision
+     WHERE rd.retrieval_id = ANY($1::uuid[])
+       AND EXISTS (SELECT 1 FROM definition_read_access dra
+                   WHERE dra.definition_id = rd.definition_id AND dra.principal_id = $2)
+     ORDER BY rd.retrieval_id, rd.position`,
+    [rows.map((row) => row.id), caller.id],
+  );
+  const definitionsByRetrieval = new Map<string, RetrievedDefinition[]>();
+  for (const row of delivered.rows) {
+    const list = definitionsByRetrieval.get(row.retrieval_id) ?? [];
+    list.push({ definitionId: row.definition_id, revision: row.revision, kind: row.kind, name: row.name });
+    definitionsByRetrieval.set(row.retrieval_id, list);
+  }
   return rows.map((row) => ({
     id: row.id,
     projectId: row.project_id,
@@ -461,6 +507,7 @@ export async function listRetrievals(
     failed: row.outcome === "failed",
     retrievedAt: row.retrieved_at,
     items: byRetrieval.get(row.id) ?? [],
+    definitions: definitionsByRetrieval.get(row.id) ?? [],
     applicability: row.applicability === null ? null : { repositoryId: row.applicability.repositoryId, branch: row.applicability.branch, at: new Date(row.applicability.at) },
   }));
 }

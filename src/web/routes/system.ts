@@ -137,7 +137,7 @@ function tabNav(current: SystemTab): SafeHtml {
 }
 
 function card(title: string, hint: string, body: SafeHtml): SafeHtml {
-  return html`<div class="console-card">
+  return html`<div class="console-card panel">
     <h2>${title}</h2>
     <p class="hint">${hint}</p>
     ${body}

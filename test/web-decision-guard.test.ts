@@ -29,7 +29,8 @@ function runtimeFor(w: World, includeHints = true) {
       const input = JSON.parse(messages[1]?.content ?? "") as GuardInput;
       const source = input.sources[0]!;
       return {
-        provider: "controlled-test-provider", model: "controlled-test-model", usage: null,
+        provider: "controlled-test-provider", model: "controlled-test-model", usage: { inputTokens: 120, outputTokens: 80 },
+        latencyMs: 1234, parameters: { maxOutputTokens: 2048, reasoningEffort: "low" },
         text: JSON.stringify({ candidates: [{ title: "Cache <script>alert(1)</script>", decision: "Synthetic guarded cache decision.",
           evidence: [{ sourceId: source.sourceId, start: 0, end: source.text.length, quote: source.text }],
           possibleConflicts: includeHints ? input.approvedDecisions.map((decision) => ({ memoryId: decision.memoryId, revision: decision.revision, reason: "Synthetic possible conflict for review." })) : [],
@@ -144,6 +145,11 @@ test("an explicit extraction produces escaped evidence-backed candidates and a p
   assert.equal(run.status, 200);
   assert.match(run.body, /Recorded extraction/);
   assert.match(run.body, /controlled-test-provider/);
+  assert.match(run.body, /1,234 ms/);
+  assert.match(run.body, /120 input tokens/);
+  assert.match(run.body, /80 output tokens/);
+  assert.match(run.body, /Output cap: 2048 tokens/);
+  assert.match(run.body, /Reasoning effort: low/);
   assert.match(run.body, /Cache &lt;script&gt;alert\(1\)&lt;\/script&gt;/);
   assert.doesNotMatch(run.body, /Cache <script>/);
   assert.match(run.body, /Source says/);

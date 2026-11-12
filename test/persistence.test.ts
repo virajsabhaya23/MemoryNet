@@ -29,6 +29,16 @@ const MIGRATIONS = [
   "009_decision_applicability.sql",
   "010_guard_scope.sql",
   "011_decision_work.sql",
+  "012_ledger.sql",
+  "013_review_policy.sql",
+  "014_memory_relations.sql",
+  "015_instruction_flag.sql",
+  "016_search_vectors.sql",
+  "017_brain.sql",
+  "018_local_repositories.sql",
+  "019_receipt_generation.sql",
+  "020_seal_receipt_generations.sql",
+  "021_retrieval_definitions.sql",
 ];
 
 test("records survive a restart and each migration runs once", async () => {

@@ -76,10 +76,11 @@ interface PickerRow {
 }
 
 /**
- * Local stand-in for sign-in: anyone at this computer may act as any synthetic person or agent.
- * Real sign-in waits for an approved sign-in library and GitHub docs.
+ * The sign-in page: GitHub sign-in when configured, the prepared prototype's access key, or the sandbox picker,
+ * where anyone at this computer may act as any synthetic person or agent.
  */
 export async function signInPicker(rc: RequestContext): Promise<WebResponse> {
+  if(rc.github)return page(rc,{title:"Sign in",body:html`<section class="prototype-login"><h2>Your engineering workspace</h2><p>Sign in with the GitHub account your administrator linked to this workspace.</p><form method="post" action="/sign-in/github" class="stacked"><input type="hidden" name="_login" value="${rc.systemToken}"/><button type="submit">Sign in with GitHub</button></form><p class="hint">GitHub shows a short code to confirm. MemoryNet then asks GitHub who you are and which connected repositories you can read, and checks again every few minutes while you are signed in. Your GitHub token stays in this app's memory and is discarded when you sign out or the app stops.</p></section>`});
   if(rc.prototype)return page(rc,{title:"Sign in",body:html`<section class="prototype-login"><h2>Your engineering workspace</h2><p>Sign in as <strong>${rc.prototype.login}</strong> to explore original Vercel source and review imported evidence.</p><form method="post" action="/sign-in" class="stacked"><input type="hidden" name="_login" value="${rc.systemToken}"/><label>Local access key<input type="password" name="accessKey" required autocomplete="current-password" maxlength="256"/></label><button type="submit">Sign in</button></form><p class="hint">This local prototype uses a private access key. Your identity is bound to the configured GitHub operator; account impersonation and test-data controls are disabled.</p></section>`});
   const { rows } = await rc.ctx.db.query<PickerRow>(
     `SELECT pr.id, pr.kind, pr.display_name, ra.role,
@@ -210,8 +211,9 @@ export async function signInPicker(rc: RequestContext): Promise<WebResponse> {
   return page(rc, {
     title: "Choose who you are",
     body: html`<p class="warning">
-        Local testing only. Real sign-in is not built yet, so anyone using this
+        Local testing only. This sandbox has no sign-in, so anyone using this
         computer can act as any person below. Use only public or synthetic evidence.
+        Configure GitHub sign-in for verified identities.
       </p>
       ${people.size === 0
         ? html`<p class="empty">
@@ -220,7 +222,7 @@ export async function signInPicker(rc: RequestContext): Promise<WebResponse> {
           </p>`
         : html`<div class="picker-bar">${search} ${note}</div>
             <form method="post" action="/sign-in" class="picker">
-              <p class="picker-hint">Pick a card to sign in as that person.</p>
+              <p class="picker-hint">Pick a test persona to explore its roles. No account or password is needed.</p>
               ${choices}
             </form>`}`,
   });

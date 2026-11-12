@@ -1,3 +1,4 @@
+import { LOCAL_DOCUMENT, repositoryProvider, requireRepositoryId } from "./repository-identity.ts";
 import {
   hasFreshRepositoryAccess,
   requireCaller,
@@ -13,8 +14,8 @@ import {
 import { recordAudit } from "./audit.ts";
 import {
   flagDetails,
-  mayContainPersonalData,
   requireNoSecrets,
+  typedTextFlags,
   type ContentFlag,
 } from "./content-checks.ts";
 import { accessFreshSince, type MemoryNetContext } from "./context.ts";
@@ -26,13 +27,23 @@ import {
   ValidationError,
 } from "./errors.ts";
 import { PROVIDERS, type Provider } from "./repositories.ts";
+import { readProjectPolicy, requireAgentProposalAllowed } from "./policy.ts";
+import {
+  NO_RELATIONS,
+  normalizeRelations,
+  parseRelations,
+  readableMemoryIds,
+  relationsJson,
+  sameRelations,
+  type MemoryRelations,
+  type MemoryRelationsInput,
+} from "./relations.ts";
 import { MINIMUM_ROLE, ROLE_RANK } from "./roles.ts";
 import {
   isPullRequestUrl,
   optionalCommitSha,
   optionalLimit,
   optionalText,
-  requireGithubId,
   requireHttpsUrl,
   requireId,
   requireIds,
@@ -103,14 +114,14 @@ export function normalizeDecisionApplicability(value: DecisionApplicabilityInput
   const validFrom = decisionDate(value.validFrom, "validFrom");
   const validUntil = value.validUntil == null ? null : decisionDate(value.validUntil, "validUntil");
   if (validUntil !== null && validUntil.getTime() <= validFrom.getTime()) throw new ValidationError("validUntil must follow validFrom (exclusive end)");
-  return { repositoryId: requireGithubId(value.repositoryId, "repositoryId"), branch: requireDecisionBranch(value.branch), validFrom, validUntil };
+  return { repositoryId: requireRepositoryId(value.repositoryId, "repositoryId"), branch: requireDecisionBranch(value.branch), validFrom, validUntil };
 }
 function applicabilityJson(value: DecisionApplicability | null): string | null { return value === null ? null : JSON.stringify(value); }
 function sameApplicability(a: DecisionApplicability | null, b: DecisionApplicability | null): boolean { return applicabilityJson(a) === applicabilityJson(b); }
 export async function requireDecisionApplicabilityAccess(q: Queryable, ctx: MemoryNetContext, caller: Principal, projectId: string, applicability: DecisionApplicability | null): Promise<string | null> {
   if (applicability === null) return null;
-  const row = (await q.query<{ id: string }>("SELECT id FROM repository_connections WHERE project_id=$1 AND provider='github' AND external_repository_id=$2 AND disconnected_at IS NULL", [projectId, applicability.repositoryId])).rows[0];
-  if (!row || !(await hasFreshRepositoryAccess(q, caller.id, "github", applicability.repositoryId, accessFreshSince(ctx)))) throw new NotFoundError("Applicability repository not found");
+  const row = (await q.query<{ id: string }>("SELECT id FROM repository_connections WHERE project_id=$1 AND provider=$3 AND external_repository_id=$2 AND disconnected_at IS NULL", [projectId, applicability.repositoryId, repositoryProvider(applicability.repositoryId)])).rows[0];
+  if (!row || !(await hasFreshRepositoryAccess(q, caller.id, repositoryProvider(applicability.repositoryId), applicability.repositoryId, accessFreshSince(ctx)))) throw new NotFoundError("Applicability repository not found");
   return row.id;
 }
 
@@ -179,6 +190,8 @@ export interface Proposal {
   restoredFromRevision: number | null;
   applicability: DecisionApplicability | null;
   baseStatusGeneration: number | null;
+  /** Paths it governs and links to other memories; links you cannot read are left out. */
+  relations: MemoryRelations;
 }
 
 /** Approved knowledge at its current version. The ID never changes. */
@@ -205,6 +218,10 @@ export interface Memory {
   statusChangedAt: Date | null;
   applicability: DecisionApplicability | null;
   statusGeneration: number;
+  /** Different reviewers who approved the published proposal version. */
+  approvals: number;
+  /** Reviewed paths this version governs and links to other memories; links you cannot read are left out. */
+  relations: MemoryRelations;
 }
 
 export const EXCERPT_MAX_LENGTH = 4000;
@@ -228,7 +245,7 @@ export const SOURCE_COLUMNS = `id, project_id, provider, external_repository_id,
 /** Proposal columns for INSERT or UPDATE ... RETURNING; the caller adds the evidence. */
 const PROPOSAL_RETURNING = `id, project_id, type, title, content, owner_id, status, revision,
   proposed_by, proposed_at, reviewed_by, reviewed_at, review_reason, memory_id, content_flags,
-  change_kind, target_memory_id, base_revision, restored_from_revision, applicability, applicability_connection_id, base_status_generation, NULL::json AS evidence`;
+  change_kind, target_memory_id, base_revision, restored_from_revision, applicability, applicability_connection_id, base_status_generation, relations, NULL::json AS evidence`;
 
 // Binds $1 caller and $2 oldest acceptable repository access observation.
 const READABLE_SOURCES_SQL = `
@@ -250,7 +267,7 @@ const READABLE_PROPOSALS_SQL = `
   SELECT mp.id, mp.project_id, mp.type, mp.title, mp.content, mp.owner_id, mp.status,
          mp.revision, mp.proposed_by, mp.proposed_at, mp.reviewed_by, mp.reviewed_at,
          mp.review_reason, mp.memory_id, mp.content_flags, mp.change_kind,
-         mp.target_memory_id, mp.base_revision, mp.restored_from_revision, mp.applicability, mp.applicability_connection_id, mp.base_status_generation,
+         mp.target_memory_id, mp.base_revision, mp.restored_from_revision, mp.applicability, mp.applicability_connection_id, mp.base_status_generation, mp.relations,
          (SELECT ${EVIDENCE_JSON} FROM proposal_evidence pe JOIN sources s ON s.id = pe.source_id
           WHERE pe.proposal_id = mp.id) AS evidence
   FROM memory_proposals mp
@@ -275,7 +292,8 @@ const READABLE_PROPOSALS_SQL = `
 export const READABLE_MEMORIES_SQL = `
   SELECT m.id, m.project_id, m.owner_id, m.status, r.revision, r.type, r.title, r.content,
          r.proposal_id, r.proposal_revision, mp.proposed_by, r.approved_by, r.approved_at,
-         m.superseded_by, m.status_reason, m.status_changed_by, m.status_changed_at, m.status_generation, r.applicability, r.applicability_connection_id,
+         m.superseded_by, m.status_reason, m.status_changed_by, m.status_changed_at, m.status_generation, r.applicability, r.applicability_connection_id, r.relations,
+         COALESCE(r.approval_count, 1)::int AS approvals,
          (SELECT ${EVIDENCE_JSON} FROM memory_evidence me JOIN sources s ON s.id = me.source_id
           WHERE me.memory_id = m.id AND me.revision = m.current_revision) AS evidence
   FROM memories m
@@ -347,6 +365,7 @@ export interface ProposalRow {
   applicability?: DecisionApplicabilityInput | null;
   applicability_connection_id?: string | null;
   base_status_generation?: number | null;
+  relations?: unknown;
 }
 
 interface MemoryRow {
@@ -371,6 +390,8 @@ interface MemoryRow {
   applicability?: DecisionApplicabilityInput | null;
   applicability_connection_id?: string | null;
   status_generation?: number;
+  approvals?: number;
+  relations?: unknown;
 }
 
 export function mapSource(row: SourceRow): Source {
@@ -426,6 +447,7 @@ export function mapProposal(row: ProposalRow): Proposal {
     restoredFromRevision: row.restored_from_revision,
     applicability: normalizeDecisionApplicability(row.applicability),
     baseStatusGeneration: row.base_status_generation ?? null,
+    relations: parseRelations(row.relations),
   };
 }
 
@@ -451,7 +473,80 @@ function mapMemory(row: MemoryRow): Memory {
     statusChangedAt: row.status_changed_at,
     applicability: normalizeDecisionApplicability(row.applicability),
     statusGeneration: row.status_generation ?? 0,
+    approvals: row.approvals ?? 1,
+    relations: parseRelations(row.relations),
   };
+}
+
+/**
+ * Drops links to memories the caller cannot read now, so a link never reveals a hidden memory.
+ * One query for the whole batch.
+ */
+export async function withVisibleLinks<T extends { relations: MemoryRelations }>(
+  q: Queryable,
+  ctx: MemoryNetContext,
+  caller: Principal,
+  items: T[],
+): Promise<T[]> {
+  const ids = items.flatMap((item) => item.relations.links.map((link) => link.memoryId));
+  if (ids.length === 0) return items;
+  const visible = await readableMemoryIds(q, ctx, caller, READABLE_MEMORIES_SQL, ids);
+  return items.map((item) => item.relations.links.every((link) => visible.has(link.memoryId))
+    ? item
+    : { ...item, relations: { paths: item.relations.paths, links: item.relations.links.filter((link) => visible.has(link.memoryId)) } });
+}
+
+/**
+ * New links must name current memories in the project that the caller can read; links already reviewed
+ * (kept from the version being changed) only need to stay readable. Never reveals a hidden memory.
+ */
+async function requireLinkTargets(
+  q: Queryable,
+  ctx: MemoryNetContext,
+  caller: Principal,
+  projectId: string,
+  relations: MemoryRelations,
+  options: { self?: string | null; existing?: MemoryRelations } = {},
+): Promise<void> {
+  if (relations.links.length === 0) return;
+  const kept = new Set(options.existing?.links.map((link) => link.memoryId) ?? []);
+  const added = relations.links.filter((link) => !kept.has(link.memoryId));
+  if (relations.links.some((link) => link.memoryId === options.self)) throw new ValidationError("A memory cannot link to itself");
+  const readable = await readableMemoryIds(q, ctx, caller, READABLE_MEMORIES_SQL, added.map((link) => link.memoryId));
+  for (const link of added) {
+    const target = readable.get(link.memoryId);
+    if (!target || target.projectId !== projectId) throw new ValidationError("Every linked memory must be one you can read in this project");
+    if (target.status !== "approved") throw new ValidationError("New links must point to current memories");
+  }
+}
+
+/** Visible links from the edit form, plus the reviewed links this caller cannot see, which an edit keeps. */
+async function mergeHiddenLinks(
+  q: Queryable,
+  ctx: MemoryNetContext,
+  caller: Principal,
+  stored: MemoryRelations,
+  edited: MemoryRelations,
+): Promise<MemoryRelations> {
+  const readable = await readableMemoryIds(q, ctx, caller, READABLE_MEMORIES_SQL, stored.links.map((link) => link.memoryId));
+  const hidden = stored.links.filter((link) => !readable.has(link.memoryId) && !edited.links.some((other) => other.memoryId === link.memoryId));
+  return hidden.length === 0 ? edited : normalizeRelations({ paths: edited.paths, links: [...edited.links, ...hidden] });
+}
+
+/** The relations exactly as stored on the current proposal version, for review decisions. */
+async function storedProposalRelations(q: Queryable, proposalId: string): Promise<MemoryRelations> {
+  const row = (await q.query<{ relations: unknown }>("SELECT relations FROM memory_proposals WHERE id = $1", [proposalId])).rows[0];
+  return parseRelations(row?.relations);
+}
+
+/** The relations exactly as stored on a memory version (the current one by default). */
+async function storedMemoryRelations(q: Queryable, memoryId: string, revision?: number): Promise<MemoryRelations> {
+  const row = (await q.query<{ relations: unknown }>(
+    `SELECT r.relations FROM memories m JOIN memory_revisions r ON r.memory_id = m.id
+     WHERE m.id = $1 AND r.revision = COALESCE($2::int, m.current_revision)`,
+    [memoryId, revision ?? null],
+  )).rows[0];
+  return parseRelations(row?.relations);
 }
 
 export function proposalReadParams(
@@ -500,7 +595,7 @@ export async function findReadableProposal(
     `${READABLE_PROPOSALS_SQL} AND mp.id = $5`,
     [...proposalReadParams(ctx, caller), proposalId],
   );
-  return rows[0] ? mapProposal(rows[0]) : null;
+  return rows[0] ? (await withVisibleLinks(q, ctx, caller, [mapProposal(rows[0])]))[0]! : null;
 }
 
 export async function findReadableMemory(
@@ -513,7 +608,22 @@ export async function findReadableMemory(
     `${READABLE_MEMORIES_SQL} AND m.id = $3`,
     [caller.id, accessFreshSince(ctx), memoryId],
   );
-  return rows[0] ? mapMemory(rows[0]) : null;
+  return rows[0] ? (await withVisibleLinks(q, ctx, caller, [mapMemory(rows[0])]))[0]! : null;
+}
+
+/** Memories the caller may read now, in any status, by ID: one query. Unreadable IDs are left out. */
+export async function readableMemoriesByIds(
+  q: Queryable,
+  ctx: MemoryNetContext,
+  caller: Principal,
+  ids: readonly string[],
+): Promise<Memory[]> {
+  if (ids.length === 0) return [];
+  const { rows } = await q.query<MemoryRow>(
+    `${READABLE_MEMORIES_SQL} AND m.id = ANY($3::uuid[])`,
+    [caller.id, accessFreshSince(ctx), [...new Set(ids)]],
+  );
+  return withVisibleLinks(q, ctx, caller, rows.map(mapMemory));
 }
 
 /** A memory owner must be a person with a role covering the project. */
@@ -626,8 +736,8 @@ async function saveProposalVersion(
   await tx.query(
     `INSERT INTO proposal_revisions (project_id, proposal_id, revision, type, title, content,
                                      owner_id, content_flags, authored_by, authored_at,
-                                     change_note, applicability, applicability_connection_id, base_status_generation)
-     SELECT $1, $2, $3, $4, $5, $6, $7, $8::text[], $9, $10, $11, applicability, applicability_connection_id, base_status_generation
+                                     change_note, applicability, applicability_connection_id, base_status_generation, relations)
+     SELECT $1, $2, $3, $4, $5, $6, $7, $8::text[], $9, $10, $11, applicability, applicability_connection_id, base_status_generation, relations
      FROM memory_proposals WHERE id=$2`,
     [
       proposal.projectId,
@@ -682,14 +792,17 @@ export async function recordSource(
 ): Promise<Source> {
   const projectId = requireId(input.projectId, "projectId");
   const provider = requireOneOf(input.provider, PROVIDERS, "provider");
-  const externalRepositoryId = requireGithubId(
-    input.externalRepositoryId,
-    "externalRepositoryId",
-  );
-  const pullNumber = requirePullRequestReference(input.reference, "reference");
-  const reference = `pull/${pullNumber}`;
-  const url = requireHttpsUrl(input.url, "url");
+  const externalRepositoryId = requireRepositoryId(input.externalRepositoryId, "externalRepositoryId");
+  if (repositoryProvider(externalRepositoryId) !== provider) throw new ValidationError("Repository ID does not match provider");
   const revision = optionalCommitSha(input.revision, "revision");
+  const pullNumber = provider === "github" ? requirePullRequestReference(input.reference, "reference") : null;
+  const reference = pullNumber === null ? input.reference : `pull/${pullNumber}`;
+  const url = provider === "github" ? requireHttpsUrl(input.url, "url") : input.url;
+  if (provider === "local" && (!revision || !/^[a-f0-9]{40}$/.test(revision) || !LOCAL_DOCUMENT.test(reference) ||
+      !url.startsWith(`memorynet-local://${externalRepositoryId}/${revision}/${reference}#sha256=`) ||
+      !/^[0-9a-f]{64}$/.test(url.split("#sha256=")[1] ?? "") || url.split("#").length !== 2)) {
+    throw new ValidationError("Local evidence requires an allowed document, exact commit and SHA-256 citation");
+  }
   const excerpt = requireText(
     input.excerpt,
     "excerpt",
@@ -697,9 +810,7 @@ export async function recordSource(
     true,
   );
   requireNoSecrets(excerpt, "excerpt");
-  const flags: ContentFlag[] = mayContainPersonalData(excerpt)
-    ? ["personal_data"]
-    : [];
+  const flags: ContentFlag[] = typedTextFlags(excerpt);
   return ctx.db.transaction(async (tx) => {
     const caller = await requireCaller(tx, callerId);
     const scope = await resolveScope(tx, { level: "project", id: projectId });
@@ -734,7 +845,7 @@ export async function recordSource(
         "You do not currently have access to this repository",
       );
     }
-    if (!isPullRequestUrl(url, pullNumber, connection.full_name)) {
+    if (pullNumber !== null && !isPullRequestUrl(url, pullNumber, connection.full_name)) {
       throw new ValidationError(
         `url must link to ${reference} of ${connection.full_name} on github.com`,
       );
@@ -811,10 +922,12 @@ export async function proposeMemory(
     evidenceSourceIds: string[];
     ownerId?: string;
     applicability?: DecisionApplicabilityInput | null;
+    relations?: MemoryRelationsInput | null;
   },
 ): Promise<Proposal> {
   const projectId = requireId(input.projectId, "projectId");
   const type = requireOneOf(input.type, MEMORY_TYPES, "type");
+  const relations = normalizeRelations(input.relations);
   const title = requireText(input.title, "title", TITLE_MAX_LENGTH);
   const content = requireText(
     input.content,
@@ -824,9 +937,7 @@ export async function proposeMemory(
   );
   requireNoSecrets(title, "title");
   requireNoSecrets(content, "content");
-  const flags: ContentFlag[] = mayContainPersonalData(`${title}\n${content}`)
-    ? ["personal_data"]
-    : [];
+  const flags: ContentFlag[] = typedTextFlags(`${title}\n${content}`);
   const evidenceSourceIds = requireIds(
     input.evidenceSourceIds,
     "evidenceSourceIds",
@@ -864,6 +975,7 @@ export async function proposeMemory(
       evidenceSourceIds,
       change: null,
       applicability: normalizeDecisionApplicability(input.applicability),
+      relations,
     });
   });
 }
@@ -877,6 +989,9 @@ interface NewProposal {
   flags: ContentFlag[];
   evidenceSourceIds: string[];
   applicability: DecisionApplicability | null;
+  relations: MemoryRelations;
+  /** Reviewed links carried over from the version being changed; they need not be current. */
+  existingRelations?: MemoryRelations;
   /** Null for a new memory; otherwise the memory it changes and the version it builds on. */
   change: {
     kind: Exclude<ChangeKind, "new">;
@@ -903,10 +1018,15 @@ async function saveNewProposal(
     fields.projectId,
     fields.evidenceSourceIds,
   );
+  await requireLinkTargets(tx, ctx, caller, fields.projectId, fields.relations, {
+    self: fields.change?.targetMemoryId ?? null,
+    ...(fields.existingRelations ? { existing: fields.existingRelations } : {}),
+  });
   // Lets only one proposal at a time in this project pass the duplicate check.
   await tx.query("SELECT id FROM projects WHERE id = $1 FOR NO KEY UPDATE", [
     fields.projectId,
   ]);
+  if (caller.kind === "agent") await requireAgentProposalAllowed(tx, caller.id, fields.projectId);
   const identical = await findIdenticalKnowledge(
     tx,
     ctx,
@@ -932,8 +1052,8 @@ async function saveNewProposal(
     `INSERT INTO memory_proposals (project_id, type, title, content, owner_id, status,
                                    revision, proposed_by, proposed_at, content_flags,
                                    change_kind, target_memory_id, base_revision,
-                                   restored_from_revision, applicability, applicability_connection_id, base_status_generation)
-     VALUES ($1, $2, $3, $4, $5, 'pending', 1, $6, $7, $8::text[], $9, $10, $11, $12, $13::jsonb, $14, $15)
+                                   restored_from_revision, applicability, applicability_connection_id, base_status_generation, relations)
+     VALUES ($1, $2, $3, $4, $5, 'pending', 1, $6, $7, $8::text[], $9, $10, $11, $12, $13::jsonb, $14, $15, $16::jsonb)
      RETURNING ${PROPOSAL_RETURNING}`,
     [
       fields.projectId,
@@ -949,9 +1069,10 @@ async function saveNewProposal(
       change?.baseRevision ?? null,
       change?.restoredFromRevision ?? null,
       applicabilityJson(fields.applicability), connectionId, change?.baseStatusGeneration ?? null,
+      relationsJson(fields.relations),
     ],
   );
-  const proposal = mapProposal(firstRow(rows));
+  const proposal = (await withVisibleLinks(tx, ctx, caller, [mapProposal(firstRow(rows))]))[0]!;
   await tx.query(
     `INSERT INTO proposal_evidence (project_id, proposal_id, source_id)
      SELECT $1, $2, unnest($3::uuid[])`,
@@ -1034,6 +1155,8 @@ export async function proposeChange(
     evidenceSourceIds: string[];
     ownerId?: string;
     applicability?: DecisionApplicabilityInput | null;
+    /** Omit to keep the memory's reviewed relations. Links you cannot see are always kept. */
+    relations?: MemoryRelationsInput | null;
   },
 ): Promise<Proposal> {
   const memoryId = requireId(input.memoryId, "memoryId");
@@ -1042,6 +1165,7 @@ export async function proposeChange(
     "expectedRevision",
   );
   const kind = requireOneOf(input.kind, ["revise", "replace"] as const, "kind");
+  const requestedRelations = input.relations === undefined ? null : normalizeRelations(input.relations);
   const type = requireOneOf(input.type, MEMORY_TYPES, "type");
   const title = requireText(input.title, "title", TITLE_MAX_LENGTH);
   const content = requireText(
@@ -1052,9 +1176,7 @@ export async function proposeChange(
   );
   requireNoSecrets(title, "title");
   requireNoSecrets(content, "content");
-  const flags: ContentFlag[] = mayContainPersonalData(`${title}\n${content}`)
-    ? ["personal_data"]
-    : [];
+  const flags: ContentFlag[] = typedTextFlags(`${title}\n${content}`);
   const evidenceSourceIds = requireIds(
     input.evidenceSourceIds,
     "evidenceSourceIds",
@@ -1092,6 +1214,8 @@ export async function proposeChange(
         "ownerId must be a person with a role in this project",
       );
     }
+    const stored = await storedMemoryRelations(tx, memory.id);
+    const relations = requestedRelations === null ? stored : await mergeHiddenLinks(tx, ctx, caller, stored, requestedRelations);
     return saveNewProposal(tx, ctx, caller, scope, {
       projectId: memory.projectId,
       type,
@@ -1101,6 +1225,8 @@ export async function proposeChange(
       flags,
       evidenceSourceIds,
       applicability,
+      relations,
+      existingRelations: stored,
       change: {
         kind,
         targetMemoryId: memory.id,
@@ -1186,11 +1312,11 @@ export async function proposeRestore(
       title: version.title,
       content: version.content,
       ownerId,
-      flags: mayContainPersonalData(`${version.title}\n${version.content}`)
-        ? ["personal_data"]
-        : [],
+      flags: typedTextFlags(`${version.title}\n${version.content}`),
       evidenceSourceIds: version.source_ids,
       applicability,
+      relations: await storedMemoryRelations(tx, memory.id, fromRevision),
+      existingRelations: await storedMemoryRelations(tx, memory.id, fromRevision),
       change: {
         kind: "restore",
         targetMemoryId: memory.id,
@@ -1283,19 +1409,92 @@ async function closeProposal(
   }
 }
 
-/** Publishes the exact proposal revision the reviewer saw as approved knowledge with a new stable ID. */
+/**
+ * Reviewers whose approval of the proposal's current version still counts: they still hold the reviewer role, can
+ * read every cited source and the applicability repository now, and can read every linked memory.
+ */
+async function countingApproverIds(
+  q: Queryable,
+  ctx: MemoryNetContext,
+  proposal: { id: string; projectId: string; revision: number; applicability: DecisionApplicability | null },
+  relations: MemoryRelations,
+): Promise<string[]> {
+  const { rows } = await q.query<{ reviewer_id: string }>(
+    `SELECT pa.reviewer_id FROM proposal_approvals pa
+     WHERE pa.proposal_id = $1 AND pa.revision = $2
+       AND EXISTS (SELECT 1 FROM effective_project_roles epr
+                   WHERE epr.project_id = $3 AND epr.principal_id = pa.reviewer_id AND epr.rank >= $4)
+       AND NOT EXISTS (SELECT 1 FROM proposal_revision_evidence pre
+                       WHERE pre.proposal_id = pa.proposal_id AND pre.revision = pa.revision
+                         AND NOT EXISTS (SELECT 1 FROM source_read_access sra
+                                         WHERE sra.principal_id = pa.reviewer_id AND sra.source_id = pre.source_id
+                                           AND sra.access_observed_at >= $5))
+     ORDER BY pa.approved_at, pa.reviewer_id`,
+    [proposal.id, proposal.revision, proposal.projectId, ROLE_RANK[MINIMUM_ROLE.review], accessFreshSince(ctx)],
+  );
+  const counting: string[] = [];
+  for (const { reviewer_id: reviewerId } of rows) {
+    // Only the ID matters to the read rule; approvers are always people (enforced by a foreign key).
+    const reviewer: Principal = { id: reviewerId, kind: "human", displayName: "", githubUserId: null };
+    if (proposal.applicability && !(await hasFreshRepositoryAccess(q, reviewerId, repositoryProvider(proposal.applicability.repositoryId), proposal.applicability.repositoryId, accessFreshSince(ctx)))) continue;
+    if (relations.links.length > 0) {
+      const visible = await readableMemoryIds(q, ctx, reviewer, READABLE_MEMORIES_SQL, relations.links.map((link) => link.memoryId));
+      if (visible.size !== relations.links.length) continue;
+    }
+    counting.push(reviewerId);
+  }
+  return counting;
+}
+
+/** The outcome of one reviewer's approval of an exact proposal version. */
+export type ApprovalResult =
+  | { status: "published"; memory: Memory; approvals: number; required: number }
+  | { status: "awaiting_approvals"; proposalId: string; revision: number; approvals: number; required: number };
+
+/**
+ * Publishes the exact proposal revision the reviewer saw as approved knowledge with a new stable ID.
+ * If the project policy needs more different reviewers than will have approved, nothing is written and
+ * a conflict explains it; use recordApproval to add one approval toward publication instead.
+ */
 export async function approveProposal(
   ctx: MemoryNetContext,
   callerId: string,
   input: { proposalId: string; expectedRevision: number; reason?: string },
 ): Promise<Memory> {
+  const result = await reviewForApproval(ctx, callerId, input, true);
+  if (result.status !== "published") throw new Error("Approval did not publish");
+  return result.memory;
+}
+
+/**
+ * Records this reviewer's approval of the exact proposal version. Publishes once as many different
+ * reviewers as the project policy requires have approved that version; otherwise it waits for more.
+ * Editing the proposal creates a new version that needs its own approvals.
+ */
+export async function recordApproval(
+  ctx: MemoryNetContext,
+  callerId: string,
+  input: { proposalId: string; expectedRevision: number; reason?: string },
+): Promise<ApprovalResult> {
+  return reviewForApproval(ctx, callerId, input, false);
+}
+
+async function reviewForApproval(
+  ctx: MemoryNetContext,
+  callerId: string,
+  input: { proposalId: string; expectedRevision: number; reason?: string },
+  publishNow: boolean,
+): Promise<ApprovalResult> {
   const proposalId = requireId(input.proposalId, "proposalId");
   const expectedRevision = requirePositiveInteger(
     input.expectedRevision,
     "expectedRevision",
   );
   const reason = optionalText(input.reason, "reason", REASON_MAX_LENGTH);
-  return ctx.db.transaction(async (tx) => {
+  try {
+  return await ctx.db.transaction(async (tx) => {
+    // Serializes approvals of one proposal, so two reviewers cannot both count themselves as the last one.
+    await tx.query("SELECT id FROM memory_proposals WHERE id = $1 FOR UPDATE", [proposalId]);
     const { caller, proposal, scope } = await startReview(
       tx,
       ctx,
@@ -1303,13 +1502,57 @@ export async function approveProposal(
       proposalId,
       expectedRevision,
     );
+    // Same project-row lock setProjectPolicy takes, so a policy change cannot slip between
+    // the approval count check below and publication.
+    await tx.query("SELECT id FROM projects WHERE id = $1 FOR NO KEY UPDATE", [proposal.projectId]);
+    const policy = await readProjectPolicy(tx, proposal.projectId);
+    const linked = await storedProposalRelations(tx, proposal.id);
+    if (linked.links.length > 0) {
+      const visible = await readableMemoryIds(tx, ctx, caller, READABLE_MEMORIES_SQL, linked.links.map((link) => link.memoryId));
+      if (visible.size !== linked.links.length) {
+        throw new ConflictError("This proposal links to a memory you cannot read; a reviewer who can read every linked memory must decide");
+      }
+    }
+    const alreadyApproved = (await tx.query(
+      "SELECT 1 FROM proposal_approvals WHERE proposal_id = $1 AND revision = $2 AND reviewer_id = $3",
+      [proposal.id, proposal.revision, caller.id],
+    )).rows.length > 0;
+    // Earlier approvals count only while their reviewers could still approve now; the caller just passed that check.
+    const others = (await countingApproverIds(tx, ctx, proposal, linked)).filter((id) => id !== caller.id);
+    const approvals = others.length + 1;
+    const required = policy.requiredApprovals;
+    const now = ctx.now();
+    if (approvals < required) {
+      if (publishNow) {
+        throw new ConflictError(`This project requires ${required} different reviewers to approve version ${proposal.revision}; ${others.length} currently authorized ${others.length === 1 ? "has" : "have"}. Record your approval toward publication instead.`);
+      }
+      if (alreadyApproved) {
+        throw new ConflictError(`You already approved version ${proposal.revision}; it needs ${required - approvals} more approval${required - approvals === 1 ? "" : "s"} from different reviewers`);
+      }
+      await tx.query(
+        `INSERT INTO proposal_approvals (project_id, proposal_id, revision, reviewer_id, approved_at, reason)
+         VALUES ($1, $2, $3, $4, $5, $6)`,
+        [proposal.projectId, proposal.id, proposal.revision, caller.id, now, reason],
+      );
+      await recordAudit(tx, {
+        occurredAt: now,
+        actorId: caller.id,
+        action: "memory.approval_recorded",
+        organizationId: scope.organizationId,
+        projectId: proposal.projectId,
+        targetType: "memory_proposal",
+        targetId: proposal.id,
+        reason,
+        details: { proposalRevision: proposal.revision, approvals, required },
+      });
+      return { status: "awaiting_approvals", proposalId: proposal.id, revision: proposal.revision, approvals, required };
+    }
     if (!(await isEligibleOwner(tx, proposal.ownerId, proposal.projectId))) {
       throw new ConflictError(
         "The proposed owner no longer has a role in this project; reject it and propose it again with a current owner",
       );
     }
     await requireDecisionApplicabilityAccess(tx, ctx, caller, proposal.projectId, proposal.applicability);
-    const now = ctx.now();
     const target =
       proposal.targetMemoryId === null
         ? null
@@ -1336,6 +1579,13 @@ export async function approveProposal(
       memoryId = firstRow(rows).id;
       revision = 1;
     }
+    if (!alreadyApproved) {
+      await tx.query(
+        `INSERT INTO proposal_approvals (project_id, proposal_id, revision, reviewer_id, approved_at, reason)
+         VALUES ($1, $2, $3, $4, $5, $6)`,
+        [proposal.projectId, proposal.id, proposal.revision, caller.id, now, reason],
+      );
+    }
     await closeProposal(tx, proposal, {
       status: "approved",
       reviewerId: caller.id,
@@ -1343,7 +1593,7 @@ export async function approveProposal(
       reason,
       memoryId,
     });
-    await publishRevision(tx, proposal, memoryId, revision, caller.id, now);
+    await publishRevision(tx, proposal, memoryId, revision, caller.id, now, approvals);
     if (target && keepsId) {
       await tx.query(
         "UPDATE memories SET current_revision = $2, owner_id = $3 WHERE id = $1",
@@ -1384,6 +1634,8 @@ export async function approveProposal(
         proposalId: proposal.id,
         proposalRevision: proposal.revision,
         revision,
+        approvals,
+        required,
         ...(target
           ? { changedMemoryId: target.id, baseRevision: proposal.baseRevision }
           : {}),
@@ -1392,8 +1644,18 @@ export async function approveProposal(
     const memory = await findReadableMemory(tx, ctx, caller, memoryId);
     if (!memory)
       throw new Error("The approver cannot read the memory they approved");
-    return memory;
+    return { status: "published", memory, approvals, required };
   });
+  } catch (error) {
+    // Defense in depth behind the project-row lock: if the review-policy trigger still
+    // rejects publication, report a retryable conflict instead of a raw database error.
+    const code = (error as { code?: unknown })?.code;
+    const message = error instanceof Error ? error.message : "";
+    if (code === "23514" && message.includes("Publication needs")) {
+      throw new ConflictError("The review policy changed while this approval was recorded; reload the proposal and try again.");
+    }
+    throw error;
+  }
 }
 
 const APPROVAL_ACTION: Readonly<Record<ChangeKind, string>> = {
@@ -1429,11 +1691,12 @@ async function publishRevision(
   revision: number,
   approverId: string,
   at: Date,
+  approvals: number,
 ): Promise<void> {
   await tx.query(
     `INSERT INTO memory_revisions (project_id, memory_id, revision, type, title, content,
-                                   proposal_id, proposal_revision, approved_by, approved_at, applicability, applicability_connection_id)
-     SELECT $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, applicability, applicability_connection_id
+                                   proposal_id, proposal_revision, approved_by, approved_at, applicability, applicability_connection_id, relations, approval_count)
+     SELECT $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, applicability, applicability_connection_id, relations, $11
      FROM proposal_revisions WHERE proposal_id=$7 AND revision=$8`,
     [
       proposal.projectId,
@@ -1446,6 +1709,7 @@ async function publishRevision(
       proposal.revision,
       approverId,
       at,
+      approvals,
     ],
   );
   await tx.query(
@@ -1575,6 +1839,7 @@ export interface ProposalVersion {
   evidenceSourceIds: string[];
   applicability: DecisionApplicability | null;
   baseStatusGeneration: number | null;
+  relations: MemoryRelations;
 }
 
 function sameIds(a: readonly string[], b: readonly string[]): boolean {
@@ -1601,9 +1866,12 @@ export async function editProposal(
     /** For a change to a memory: build on this memory version instead, which must be its current one. */
     baseRevision?: number;
     applicability?: DecisionApplicabilityInput | null;
+    /** Omit to keep the reviewed relations. Links you cannot see are always kept. */
+    relations?: MemoryRelationsInput | null;
   },
 ): Promise<Proposal> {
   const proposalId = requireId(input.proposalId, "proposalId");
+  const requestedRelations = input.relations === undefined ? null : normalizeRelations(input.relations);
   const expectedRevision = requirePositiveInteger(
     input.expectedRevision,
     "expectedRevision",
@@ -1628,9 +1896,7 @@ export async function editProposal(
   requireNoSecrets(title, "title");
   requireNoSecrets(content, "content");
   if (changeNote !== null) requireNoSecrets(changeNote, "changeNote");
-  const flags: ContentFlag[] = mayContainPersonalData(`${title}\n${content}`)
-    ? ["personal_data"]
-    : [];
+  const flags: ContentFlag[] = typedTextFlags(`${title}\n${content}`);
   const evidenceSourceIds = requireIds(
     input.evidenceSourceIds,
     "evidenceSourceIds",
@@ -1711,12 +1977,16 @@ export async function editProposal(
       current.projectId,
       evidenceSourceIds,
     );
+    const storedRelations = await storedProposalRelations(tx, current.id);
+    const relations = requestedRelations === null ? storedRelations : await mergeHiddenLinks(tx, ctx, caller, storedRelations, requestedRelations);
+    await requireLinkTargets(tx, ctx, caller, current.projectId, relations, { self: current.targetMemoryId, existing: storedRelations });
     const unchanged =
       current.type === type &&
       current.title === title &&
       current.content === content &&
       current.ownerId === ownerId &&
       sameApplicability(current.applicability, applicability) && current.baseStatusGeneration === baseStatusGeneration &&
+      sameRelations(storedRelations, relations) &&
       (baseRevision === null || baseRevision === current.baseRevision) &&
       sameIds(
         current.evidence.map((item) => item.sourceId).sort(),
@@ -1753,7 +2023,7 @@ export async function editProposal(
       `UPDATE memory_proposals
        SET type = $3, title = $4, content = $5, owner_id = $6, content_flags = $7::text[],
            revision = revision + 1, base_revision = COALESCE($8, base_revision),
-           applicability=$9::jsonb, applicability_connection_id=$10, base_status_generation=$11
+           applicability=$9::jsonb, applicability_connection_id=$10, base_status_generation=$11, relations=$12::jsonb
        WHERE id = $1 AND status = 'pending' AND revision = $2
        RETURNING ${PROPOSAL_RETURNING}`,
       [
@@ -1766,6 +2036,7 @@ export async function editProposal(
         flags,
         baseRevision,
         applicabilityJson(applicability), connectionId, baseStatusGeneration,
+        relationsJson(relations),
       ],
     );
     const row = rows[0];
@@ -1774,7 +2045,7 @@ export async function editProposal(
         "Someone changed this proposal while you were editing it. Reload to see the latest version, then make your change again.",
       );
     }
-    const proposal = mapProposal(row);
+    const proposal = (await withVisibleLinks(tx, ctx, caller, [mapProposal(row)]))[0]!;
     await tx.query("DELETE FROM proposal_evidence WHERE proposal_id = $1", [
       proposal.id,
     ]);
@@ -1835,9 +2106,10 @@ export async function getProposalHistory(
     readable: boolean;
     applicability: DecisionApplicabilityInput | null;
     base_status_generation: number | null;
+    relations: unknown;
   }>(
     `SELECT prv.revision, prv.authored_by, prv.authored_at, prv.change_note, prv.type,
-            prv.title, prv.content, prv.owner_id, prv.content_flags, prv.applicability, prv.base_status_generation,
+            prv.title, prv.content, prv.owner_id, prv.content_flags, prv.applicability, prv.base_status_generation, prv.relations,
             COALESCE((SELECT array_agg(pre.source_id::text ORDER BY pre.source_id)
                       FROM proposal_revision_evidence pre
                       WHERE pre.proposal_id = prv.proposal_id AND pre.revision = prv.revision),
@@ -1858,7 +2130,7 @@ export async function getProposalHistory(
      ORDER BY prv.revision`,
     [id, caller.id, accessFreshSince(ctx)],
   );
-  return rows.map((row) => ({
+  return withVisibleLinks(ctx.db, ctx, caller, rows.map((row) => ({
     revision: row.revision,
     authoredBy: row.authored_by,
     authoredAt: row.authored_at,
@@ -1872,7 +2144,68 @@ export async function getProposalHistory(
     evidenceSourceIds: row.readable ? row.source_ids : [],
     applicability: row.readable ? normalizeDecisionApplicability(row.applicability) : null,
     baseStatusGeneration: row.readable ? row.base_status_generation : null,
-  }));
+    relations: row.readable ? parseRelations(row.relations) : NO_RELATIONS,
+  })));
+}
+
+/** Who approved the proposal's current version so far, and how many the project policy requires. */
+export interface ApprovalStatus {
+  proposalId: string;
+  revision: number;
+  required: number;
+  /** counts is false when the reviewer has since lost the role or access needed to approve; it no longer counts. */
+  approvals: Array<{ reviewerId: string; approvedAt: Date; reason: string | null; counts: boolean }>;
+}
+
+export async function getApprovalStatus(
+  ctx: MemoryNetContext,
+  callerId: string,
+  proposalId: string,
+): Promise<ApprovalStatus> {
+  const id = requireId(proposalId, "proposalId");
+  const caller = await requireCaller(ctx.db, callerId);
+  const proposal = await findReadableProposal(ctx.db, ctx, caller, id);
+  if (!proposal) throw new NotFoundError("Proposal not found");
+  const policy = await readProjectPolicy(ctx.db, proposal.projectId);
+  const { rows } = await ctx.db.query<{ reviewer_id: string; approved_at: Date; reason: string | null }>(
+    `SELECT reviewer_id, approved_at, reason FROM proposal_approvals
+     WHERE proposal_id = $1 AND revision = $2 ORDER BY approved_at, reviewer_id`,
+    [proposal.id, proposal.revision],
+  );
+  const counting = rows.length === 0 ? [] : await countingApproverIds(ctx.db, ctx, proposal, await storedProposalRelations(ctx.db, proposal.id));
+  return {
+    proposalId: proposal.id,
+    revision: proposal.revision,
+    required: policy.requiredApprovals,
+    approvals: rows.map((row) => ({ reviewerId: row.reviewer_id, approvedAt: row.approved_at, reason: row.reason, counts: counting.includes(row.reviewer_id) })),
+  };
+}
+
+/**
+ * For proposals the caller already listed: reviewers whose approvals of the current version count, and the number
+ * the project requires. Proposals without approvals cost one query in total.
+ */
+export async function approvalProgress(
+  ctx: MemoryNetContext,
+  proposals: readonly Proposal[],
+): Promise<Map<string, { counting: string[]; required: number }>> {
+  const result = new Map<string, { counting: string[]; required: number }>();
+  if (proposals.length === 0) return result;
+  const { rows } = await ctx.db.query<{ proposal_id: string; approvals: number; required: number }>(
+    `SELECT mp.id AS proposal_id,
+            (SELECT count(*)::int FROM proposal_approvals pa WHERE pa.proposal_id = mp.id AND pa.revision = mp.revision) AS approvals,
+            COALESCE((SELECT ppr.required_approvals FROM project_policy_revisions ppr WHERE ppr.project_id = mp.project_id
+                      ORDER BY ppr.revision DESC LIMIT 1), 1)::int AS required
+     FROM memory_proposals mp WHERE mp.id = ANY($1::uuid[])`,
+    [proposals.map((proposal) => proposal.id)],
+  );
+  const byId = new Map(proposals.map((proposal) => [proposal.id, proposal]));
+  for (const row of rows) {
+    const proposal = byId.get(row.proposal_id)!;
+    const counting = row.approvals === 0 ? [] : await countingApproverIds(ctx.db, ctx, proposal, await storedProposalRelations(ctx.db, proposal.id));
+    result.set(row.proposal_id, { counting, required: row.required });
+  }
+  return result;
 }
 
 /** Pending proposals the caller may review now: they are a reviewer there and wrote none of the versions. Oldest first. */
@@ -1891,7 +2224,7 @@ export async function listReviewQueue(
      LIMIT $6`,
     [...proposalReadParams(ctx, caller), ROLE_RANK[MINIMUM_ROLE.review], limit],
   );
-  return rows.map(mapProposal);
+  return withVisibleLinks(ctx.db, ctx, caller, rows.map(mapProposal));
 }
 
 /** One approved memory the caller may read now. Proposals are never returned here. */
@@ -1926,17 +2259,16 @@ export async function readableMemories(
     limit,
   );
   const { rows } = await q.query<MemoryRow>(sql, params);
-  return rows.map(mapMemory);
+  return withVisibleLinks(q, ctx, caller, rows.map(mapMemory));
 }
 
 // The memory's title outranks its type and text, which outrank the evidence it cites.
 // A reference such as pull/42 becomes "pull 42", so "#42" finds it too.
-const SEARCH_DOCUMENT_SQL = `
-  setweight(to_tsvector('english', readable.title), 'A')
-  || setweight(to_tsvector('english', replace(readable.type, '_', ' ') || ' ' || readable.content), 'B')
-  || setweight(to_tsvector('english', coalesce(
-       (SELECT string_agg(replace(e->>'reference', '/', ' ') || ' ' || (e->>'excerpt'), ' ')
-        FROM json_array_elements(readable.evidence) e), '')), 'C')`;
+// Vectors are stored per memory version and per source (migration 016), so nothing is re-parsed per request.
+export const SEARCH_DOCUMENT_SQL = `
+  ((SELECT mr.search_vector FROM memory_revisions mr WHERE mr.memory_id = readable.id AND mr.revision = readable.revision)
+   || coalesce((SELECT tsvector_agg(s.search_vector ORDER BY s.id) FROM memory_evidence me JOIN sources s ON s.id = me.source_id
+                WHERE me.memory_id = readable.id AND me.revision = readable.revision), ''::tsvector))`;
 
 /**
  * Memories in one project that the caller may read now, in any status, matching any word of the search,
@@ -1974,7 +2306,7 @@ export async function searchReadableMemories(
        FROM matched)
      SELECT id, project_id, owner_id, status, revision, type, title, content, proposal_id,
             proposal_revision, proposed_by, approved_by, approved_at, superseded_by,
-            status_reason, status_changed_by, status_changed_at, status_generation, applicability, applicability_connection_id, evidence
+            status_reason, status_changed_by, status_changed_at, status_generation, applicability, applicability_connection_id, approvals, relations, evidence
      FROM numbered
      WHERE place <= CASE WHEN status = 'approved' THEN $5::int ELSE $6::int END
      ORDER BY status = 'approved' DESC, place`,
@@ -1988,7 +2320,7 @@ export async function searchReadableMemories(
       ...(applicability ? [applicability.repositoryId, applicability.branch, applicability.at] : []),
     ],
   );
-  return { terms, matches: rows.map(mapMemory) };
+  return { terms, matches: await withVisibleLinks(q, ctx, caller, rows.map(mapMemory)) };
 }
 
 /**
@@ -2086,7 +2418,7 @@ export async function listProposals(
     limit,
   );
   const { rows } = await ctx.db.query<ProposalRow>(sql, params);
-  return rows.map(mapProposal);
+  return withVisibleLinks(ctx.db, ctx, caller, rows.map(mapProposal));
 }
 
 export async function getSource(

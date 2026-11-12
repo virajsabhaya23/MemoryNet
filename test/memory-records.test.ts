@@ -245,7 +245,8 @@ test("the database itself refuses agent owners, agent approvers, self-review, an
        VALUES ($1, $2, 2, 'decision', 'Synthetic', 'Synthetic', $3, 1, $4, now())`,
       [w.alpha.id, memory.id, w.proposals.alphaPending.id, w.people.agent.id],
     ),
-    /foreign key/,
+    // The approval check runs before foreign keys; agents can never hold an approval either.
+    /foreign key|different approvals/,
   );
   await assert.rejects(
     env.db.query(

@@ -1,6 +1,7 @@
 import { resolveScope, type ScopeRef } from "../../access.ts";
 import { NotFoundError } from "../../errors.ts";
-import { listMemories, listSources } from "../../knowledge.ts";
+import { listMemories, listReviewQueue, listSources } from "../../knowledge.ts";
+import { listWork } from "../../work.ts";
 import {
   assignRole,
   listOwnRoles,
@@ -30,7 +31,7 @@ import {
   type Role,
 } from "../../roles.ts";
 import { requireId } from "../../validation.ts";
-import { badge, html, options, table, type SafeHtml } from "../html.ts";
+import { badge, html, ledgerRow, options, recordHead, scopeTabs, statStrip, table, type SafeHtml } from "../html.ts";
 import {
   formValue,
   interfaceIcon,
@@ -53,6 +54,9 @@ import {
   scopePath,
 } from "../views.ts";
 import { definitionsSummary } from "./definitions.ts";
+import { brainSection } from "./brain.ts";
+import { analyzeBrainHealth, listBrainActivity, type BrainFindingKind } from "../../brain.ts";
+import { integrityLink, policySection } from "./governance.ts";
 import {
   exportForm,
   memoriesSection,
@@ -214,6 +218,17 @@ function monogram(name: string): string {
     .slice(0, 2);
 }
 
+/** Brain findings the Overview lists under Needs you, with their row label. Stale work and reviews have their own rows. */
+const NEEDS_YOU_BRAIN: Readonly<Partial<Record<BrainFindingKind, string>>> = {
+  warning_nodes: "Brain health",
+  flagged_nodes: "Brain health",
+  uncited_sources: "Brain health",
+  outdated_definitions: "Brain recommendation",
+  recurring_reports: "Brain recommendation",
+  rejected_agent_attempts: "Brain recommendation",
+  conflicting_decisions: "Brain recommendation",
+};
+
 async function home(rc: RequestContext): Promise<WebResponse> {
   if (!rc.user) return signInPicker(rc);
   const user = rc.user;
@@ -226,11 +241,89 @@ async function home(rc: RequestContext): Promise<WebResponse> {
     ),
   );
   const firstName = user.displayName.split(/\s+/)[0] ?? user.displayName;
+  // Needs-you: only scopes this person can already see, counted with the same
+  // permission-checked reads as the pages each row links to.
+  const visibleProjects = trees.flatMap((tree) =>
+    tree ? tree.businessUnits.flatMap((unit) => unit.projects.map((project) => ({ project, organizationName: tree.organization.name }))) : [],
+  );
+  const pendingReviews = user.kind === "human"
+    ? (await listReviewQueue(rc.ctx, user.id, { limit: 200 }).catch(() => [])).length
+    : 0;
+  const workRows: SafeHtml[] = [];
+  const suspendedRows: SafeHtml[] = [];
+  const activity: Array<{ at: Date; row: SafeHtml }> = [];
+  for (const { project } of visibleProjects) {
+    const work = await listWork(rc.ctx, user.id, project.id).catch(() => []);
+    const stale = work.filter((item) => item.contextStatus === "review_needed").length;
+    if (stale > 0) {
+      workRows.push(ledgerRow({
+        href: `/projects/${project.id}/work`,
+        title: `${stale} work ${stale === 1 ? "item needs" : "items need"} review in ${project.name}`,
+        meta: "Context is no longer current",
+        trailing: html`<span class="badge" data-state="warning">Stale</span>`,
+      }));
+    }
+    const suspended = await listMemories(rc.ctx, user.id, { scope: { level: "project", id: project.id }, status: "suspended", limit: 200 }).catch(() => []);
+    if (suspended.length > 0) {
+      suspendedRows.push(ledgerRow({
+        href: `/projects/${project.id}#current-knowledge`,
+        title: `${suspended.length} suspended ${suspended.length === 1 ? "memory is" : "memories are"} not current guidance in ${project.name}`,
+        meta: "Suspended knowledge",
+        trailing: html`<span class="badge" data-state="flagged">Suspended</span>`,
+      }));
+    }
+    const approved = await listMemories(rc.ctx, user.id, { scope: { level: "project", id: project.id }, limit: 20 }).catch(() => []);
+    for (const memory of approved) {
+      activity.push({ at: memory.approvedAt, row: ledgerRow({
+        href: `/memories/${memory.id}`,
+        title: memory.title,
+        meta: html`Approved in ${project.name} · ${memory.approvedAt}`,
+        trailing: html`<span class="badge" data-kind="knowledge">Approved</span>`,
+      }) });
+    }
+    const sources = await listSources(rc.ctx, user.id, { scope: { level: "project", id: project.id }, limit: 20 }).catch(() => []);
+    for (const source of sources) {
+      activity.push({ at: source.capturedAt, row: ledgerRow({
+        href: `/sources/${source.id}`,
+        title: source.reference,
+        meta: html`Captured in ${project.name} · ${source.capturedAt}`,
+        trailing: html`<span class="badge" data-kind="evidence">Captured</span>`,
+      }) });
+    }
+  }
+  activity.sort((a, b) => b.at.getTime() - a.at.getTime());
+  const recentActivity = activity.slice(0, 6).map((item) => item.row);
+  const brainActivity = organizations[0]
+    ? (await listBrainActivity(rc.ctx, user.id, organizations[0].id, 8).catch(() => [])).map((event) => ledgerRow({
+        href: event.href,
+        title: event.label,
+        meta: html`Brain activity · ${event.at}`,
+        trailing: html`<span class="badge" data-kind="guidance">Brain</span>`,
+      }))
+    : [];
+  const needsYou: SafeHtml[] = [
+    ...(pendingReviews > 0 ? [ledgerRow({ href: "/review", title: `${pendingReviews} ${pendingReviews === 1 ? "proposal" : "proposals"} waiting for your review`, meta: "Review queue", trailing: html`<span class="badge" data-state="pending">Review</span>` })] : []),
+    ...workRows,
+    ...suspendedRows,
+  ];
+  for (const organization of organizations) {
+    const brain = await analyzeBrainHealth(rc.ctx, user.id, { organizationId: organization.id }).catch(() => []);
+    for (const finding of brain) {
+      const meta = NEEDS_YOU_BRAIN[finding.kind];
+      if (meta === undefined) continue;
+      needsYou.push(ledgerRow({
+        href: finding.href,
+        title: finding.label,
+        meta,
+        trailing: html`<span class="badge" data-kind="guidance">Brain</span>`,
+      }));
+    }
+  }
   return page(rc, {
     title: "Organizations",
     workspace: true,
     body: html`<div class="dash">
-      <header class="dash-hero">
+      <header class="dash-head">
         <h1>${greeting()}, ${firstName}.</h1>
         <p class="dash-lede">
           ${rc.prototype ? "Explore original source, inspect imported pull requests, and review engineering knowledge before publishing it." : "Your organizations' shared memory: the decisions, lessons, and rules your teams and AI tools rely on, each with its source, owner, and history."}
@@ -238,31 +331,49 @@ async function home(rc: RequestContext): Promise<WebResponse> {
         <div class="dash-actions">
           ${organizations[0]
             ? html`<a
-                  class="button-link"
+                  class="key key-primary"
                   href="/orgs/${organizations[0].id}/network${organizations[0].slug.endsWith("-evidence") ? "?evidence=all" : ""}"
                   >Open the network${interfaceIcon("network")}</a
                 >
-                <a class="ghost-link" href="/orgs/${organizations[0].id}/you"
+                <a class="key" href="/orgs/${organizations[0].id}/you"
                   >Your network${interfaceIcon("person")}</a
                 >`
             : ""}
-          <a class="ghost-link" href="/review">${interfaceIcon("review")}Review queue</a>
+          <a class="key" href="/review">${interfaceIcon("review")}Review queue</a>
         </div>
       </header>
 
-      <dl class="dash-summary" aria-label="Your accessible workspace">
-        <div><dt>Organizations</dt><dd>${organizations.length}</dd></div>
-        <div><dt>Business units</dt><dd>${trees.reduce((sum, tree) => sum + (tree?.businessUnits.length ?? 0), 0)}</dd></div>
-        <div><dt>Projects</dt><dd>${trees.reduce((sum, tree) => sum + (tree?.businessUnits.reduce((count, unit) => count + unit.projects.length, 0) ?? 0), 0)}</dd></div>
-        <div><dt>Assigned roles</dt><dd>${own.length}</dd></div>
-      </dl>
+      ${statStrip([
+        ["Organizations", organizations.length],
+        ["Business units", trees.reduce((sum, tree) => sum + (tree?.businessUnits.length ?? 0), 0)],
+        ["Projects", trees.reduce((sum, tree) => sum + (tree?.businessUnits.reduce((count, unit) => count + unit.projects.length, 0) ?? 0), 0)],
+        ["Assigned roles", own.length],
+      ])}
+      ${needsYou.length > 0
+        ? html`<section class="needs-you panel" aria-labelledby="needs-title">
+            <h2 id="needs-title">Needs you</h2>
+            <ul class="ledger">${needsYou}</ul>
+          </section>`
+        : ""}
+      ${recentActivity.length > 0
+        ? html`<section aria-labelledby="activity-title">
+            <h2 id="activity-title">Recent activity</h2>
+            <ul class="ledger">${recentActivity}</ul>
+          </section>`
+        : ""}
+      ${brainActivity.length > 0
+        ? html`<section aria-labelledby="brain-activity-title">
+            <h2 id="brain-activity-title">Brain activity</h2>
+            <ul class="ledger">${brainActivity}</ul>
+          </section>`
+        : ""}
       <section class="dash-section" aria-labelledby="orgs-title">
         <div class="dash-section-head">
           <h2 id="orgs-title">Your organizations</h2>
           <span class="count-pill">${organizations.length}</span>
         </div>
         ${organizations.length > 0
-          ? html`<ul class="cards org-cards">
+          ? html`<ul class="ledger org-ledger">
               ${organizations.map((organization, index) => {
                 const tree = trees[index];
                 const units = tree?.businessUnits.length ?? 0;
@@ -271,34 +382,12 @@ async function home(rc: RequestContext): Promise<WebResponse> {
                     (sum, unit) => sum + unit.projects.length,
                     0,
                   ) ?? 0;
-                return html`<li class="org-card">
-                  <a href="/orgs/${organization.id}" class="org-card-title"
-                    ><span class="org-mark" aria-hidden="true"
-                      >${monogram(organization.name)}</span
-                    ><span>${organization.name}</span></a
-                  >
-                  <small class="org-slug">${organization.slug}</small>
-                  <dl class="org-stats">
-                    <div>
-                      <dt>Units</dt>
-                      <dd>${units}</dd>
-                    </div>
-                    <div>
-                      <dt>Projects</dt>
-                      <dd>${projects}</dd>
-                    </div>
-                    <div>
-                      <dt>Your role</dt>
-                      <dd>${roleBadge(tree?.role ?? null)}</dd>
-                    </div>
-                  </dl>
-                  <span class="card-actions"
-                    ><a href="/orgs/${organization.id}/network${organization.slug.endsWith("-evidence") ? "?evidence=all" : ""}"
-                      >Open the network${interfaceIcon("network")}</a
-                    >
-                    <a href="/orgs/${organization.id}/you">Your network${interfaceIcon("person")}</a>
-                  </span>
-                </li>`;
+                return ledgerRow({
+                  href: `/orgs/${organization.id}`,
+                  title: html`<span class="org-mark hue-${[...organization.slug].reduce((sum, char) => sum + char.charCodeAt(0), 0) % 4}" aria-hidden="true">${monogram(organization.name)}</span> ${organization.name}`,
+                  meta: html`${organization.slug} · ${units} ${units === 1 ? "unit" : "units"} · ${projects} ${projects === 1 ? "project" : "projects"}`,
+                  trailing: html`${roleBadge(tree?.role ?? null)} <a href="/orgs/${organization.id}/network${organization.slug.endsWith("-evidence") ? "?evidence=all" : ""}">Network</a> <a href="/orgs/${organization.id}/you">Your network</a>`,
+                });
               })}
             </ul>`
           : html`<div class="empty-state">
@@ -368,68 +457,38 @@ async function organizationPage(rc: RequestContext): Promise<WebResponse> {
   return page(rc, {
     title: organization.name,
     crumbs: [[organization.name, `/orgs/${organization.id}`]],
-    body: html`<div class="org-hero">
-        <div class="org-hero-main">
-          <span class="org-mark org-mark-lg" aria-hidden="true"
-            >${monogram(organization.name)}</span
-          >
-          <div>
-            <p class="eyebrow">Organization</p>
-            <p class="org-hero-role">
-              Your organization-wide role: ${roleBadge(tree.role)}
-            </p>
-          </div>
-        </div>
-        <dl class="org-stats org-hero-stats">
-          <div>
-            <dt>Business units</dt>
-            <dd>${tree.businessUnits.length}</dd>
-          </div>
-          <div>
-            <dt>Projects</dt>
-            <dd>
-              ${tree.businessUnits.reduce(
-                (sum, unit) => sum + unit.projects.length,
-                0,
-              )}
-            </dd>
-          </div>
-        </dl>
-        <p class="page-actions org-hero-actions">
-          <a class="button-link" href="/orgs/${organization.id}/network${organization.slug.endsWith("-evidence") ? "?evidence=all" : ""}"
-            >Open the network${interfaceIcon("network")}</a
-          >
-          <a class="ghost-link" href="/orgs/${organization.id}/you"
-            >Your network${interfaceIcon("person")}</a
-          >
-        </p>
-      </div>
+    body: html`${recordHead({
+        kind: "Organization",
+        title: organization.name,
+        status: roleBadge(tree.role),
+        meta: html`${organization.slug} · Your organization-wide role is shown beside the title.`,
+        actions: html`<a class="key key-primary" href="/orgs/${organization.id}/network${organization.slug.endsWith("-evidence") ? "?evidence=all" : ""}">Open the network</a> <a class="key" href="/orgs/${organization.id}/you">Your network</a> ${integrityLink(organization.id, tree.role)}`,
+      })}
+      ${statStrip([
+        ["Business units", tree.businessUnits.length],
+        ["Projects", tree.businessUnits.reduce((sum, unit) => sum + unit.projects.length, 0)],
+        ["Your role", tree.role ?? "None"],
+      ])}
       <section>
         <h2>Business units and projects you can see</h2>
         ${tree.businessUnits.length === 0
           ? html`<p class="empty">None yet.</p>`
-          : html`<div class="unit-grid">
-              ${tree.businessUnits.map(
-                (unit) =>
-                  html`<div class="unit">
-                    <h3>
-                      <a href="/business-units/${unit.id}">${unit.name}</a>
-                      ${roleBadge(unit.role)}
-                    </h3>
-                    ${unit.projects.length > 0
-                      ? html`<ul class="project-chips">
-                          ${unit.projects.map(
-                            (item) =>
-                              html`<li>
-                                <a href="/projects/${item.id}">${item.name}</a>
-                                ${roleBadge(item.role)}
-                              </li>`,
-                          )}
-                        </ul>`
-                      : html`<p class="empty">No projects you can see.</p>`}
-                  </div>`,
-              )}
-            </div>`}
+          : html`<ul class="ledger">
+              ${tree.businessUnits.flatMap((unit) => [
+                ledgerRow({
+                  href: `/business-units/${unit.id}`,
+                  title: unit.name,
+                  meta: html`${unit.projects.length} ${unit.projects.length === 1 ? "project" : "projects"}`,
+                  trailing: roleBadge(unit.role),
+                }),
+                ...unit.projects.map((item) => ledgerRow({
+                  href: `/projects/${item.id}`,
+                  title: item.name,
+                  meta: html`Project in ${unit.name}`,
+                  trailing: roleBadge(item.role),
+                })),
+              ])}
+            </ul>`}
       </section>
       ${await definitionsSummary(rc, scope, organization.id)}
       ${isAdmin
@@ -477,17 +536,24 @@ async function businessUnitPage(rc: RequestContext): Promise<WebResponse> {
       [tree.organization.name, `/orgs/${tree.organization.id}`],
       [unit.name, `/business-units/${unit.id}`],
     ],
-    body: html`<p>Your business-unit role: ${roleBadge(unit.role)}</p>
+    body: html`${recordHead({
+        kind: "Business unit",
+        title: unit.name,
+        status: roleBadge(unit.role),
+        meta: html`${tree.organization.name} · ${unit.projects.length} ${unit.projects.length === 1 ? "project" : "projects"} you can see.`,
+      })}
       <section>
         <h2>Projects you can see</h2>
-        ${table(
-          ["Project", "Your role"],
-          unit.projects.map((item) => [
-            html`<a href="/projects/${item.id}">${item.name}</a>`,
-            roleBadge(item.role),
-          ]),
-          "No projects you can see.",
-        )}
+        ${unit.projects.length === 0
+          ? html`<p class="empty">No projects you can see.</p>`
+          : html`<ul class="ledger">
+              ${unit.projects.map((item) => ledgerRow({
+                href: `/projects/${item.id}`,
+                title: item.name,
+                meta: "Project",
+                trailing: roleBadge(item.role),
+              }))}
+            </ul>`}
       </section>
       ${await definitionsSummary(rc, unitScope, tree.organization.id)}
       ${isAdmin
@@ -596,7 +662,21 @@ async function projectPage(rc: RequestContext): Promise<WebResponse> {
   return page(rc, {
     title: project.name,
     crumbs: projectCrumbs(view),
-    body: html`<p>Your role in this project: ${roleBadge(project.role)}</p>
+    body: html`${recordHead({
+        kind: "Project",
+        title: project.name,
+        status: roleBadge(project.role),
+        meta: html`Your role in this project is shown beside the title.`,
+        actions: rc.checkouts?.has(project.name) ? html`<a class="key" href="/projects/${project.id}/repository">Browse original repository</a>` : undefined,
+      })}
+      ${scopeTabs([
+        { label: "Knowledge", href: "#current-knowledge", count: memories.length, current: true },
+        { label: "Definitions", href: `/scopes/project/${project.id}/definitions` },
+        { label: "Evidence", href: "#evidence", count: sources.length },
+        { label: "Work", href: `/projects/${project.id}/work` },
+        { label: "Search", href: `/projects/${project.id}/search` },
+        { label: "Activity", href: `/projects/${project.id}/retrievals` },
+      ])}
       <nav class="project-actions" aria-label="Project actions">
         ${rc.checkouts?.has(project.name)?html`<a class="button-link" href="/projects/${project.id}/repository">Browse original repository</a>`:""}
         <a href="/projects/${project.id}/work">Affected work</a>
@@ -610,6 +690,8 @@ async function projectPage(rc: RequestContext): Promise<WebResponse> {
       ${rc.decisionGuardAvailable && user.kind === "human" && canPropose
         ? html`<p><a class="button" href="/projects/${project.id}/decision-guard">Decision Guard: suggest decisions with Meta</a></p>`
         : ""}
+      <div class="workspace-columns">
+      <div class="workspace-main">
       ${searchSection(project.id)}
       ${await memoriesSection(
         rc,
@@ -619,7 +701,7 @@ async function projectPage(rc: RequestContext): Promise<WebResponse> {
         undefined,
         "current-knowledge",
       )}
-      ${await definitionsSummary(rc, scope, view.tree.organization.id)}
+      ${await brainSection(rc, project.id, view.tree.organization.id, canPropose)}
       ${user.kind === "human" && canPropose
         ? await proposalsSection(rc, project.id)
         : ""}
@@ -644,10 +726,16 @@ async function projectPage(rc: RequestContext): Promise<WebResponse> {
       ${sourcesSection(sources)}
       ${canPropose ? await recordSourceSection(rc, project.id) : ""}
       ${canPropose ? await proposeSection(rc, project.id, sources) : ""}
-      ${isAdmin ? exportForm(rc, scope) : ""}
       ${connections ? repositoriesSection(rc, project.id, connections) : ""}
+      </div>
+      <aside class="workspace-side" aria-label="Guidance, policy and people">
+      ${await definitionsSummary(rc, scope, view.tree.organization.id)}
+      ${await policySection(rc, project.id, project.role)}
+      ${isAdmin ? exportForm(rc, scope) : ""}
       ${await membersSection(rc, scope, project.role)}
-      ${ownRoleSection(rc, scope, own)}`,
+      ${ownRoleSection(rc, scope, own)}
+      </aside>
+      </div>`,
   });
 }
 

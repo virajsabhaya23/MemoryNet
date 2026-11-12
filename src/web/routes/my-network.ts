@@ -284,7 +284,7 @@ async function myNetworkPage(rc: RequestContext): Promise<WebResponse> {
     immersive: true,
     body: html`<div class="myn-app" id="myn-app">
         <div class="myn-stage" id="myn-stage">
-          <header class="myn-hud myn-head glass">
+          <header class="myn-hud myn-head panel">
             <p class="myn-eyebrow">
               <a href="/orgs/${org.id}">${org.name}</a>
               <span aria-hidden="true">/</span> Your network
@@ -321,7 +321,7 @@ async function myNetworkPage(rc: RequestContext): Promise<WebResponse> {
             </dl>
           </header>
 
-          <div class="myn-hud myn-bar glass">
+          <div class="myn-hud myn-bar panel">
             <div class="myn-keys" role="group" aria-label="Show or hide">
               ${family("work", "How we work", true)}
               ${family("know", "What we know", true)}
@@ -354,12 +354,12 @@ async function myNetworkPage(rc: RequestContext): Promise<WebResponse> {
           <div class="myn-tip" id="myn-tip" role="presentation" hidden></div>
           ${placeLinks(view)}
 
-          <aside class="myn-hud myn-panel glass" id="myn-panel" aria-live="polite">
+          <aside class="myn-hud myn-panel panel" id="myn-panel" aria-live="polite">
             <div id="myn-summary">${accessSummary(view)}</div>
             <div id="myn-detail" hidden></div>
           </aside>
 
-          <div class="myn-hud myn-controls glass">
+          <div class="myn-hud myn-controls panel">
             <button
               type="button"
               id="myn-zoom-in"

@@ -12,6 +12,9 @@ test("Git reconciliation uses exact committed bytes, detects mismatches and reje
   const git = (...args: string[]) => execFileSync("git", ["-C", dir, ...args], { encoding: "utf8" }).trim();
   try {
     git("init", "-q");
+    // Committed bytes must equal written bytes regardless of the machine's Git settings (Git for Windows converts CRLF).
+    git("config", "core.autocrlf", "false");
+    git("config", "core.symlinks", "true");
     await writeFile(join(dir, "spec.md"), "Requirement R1\r\n");
     await symlink("spec.md", join(dir, "link"));
     git("add", ".");

@@ -160,6 +160,18 @@ export function attentionItems(
   flagged: { count: number; ids: string[] };
   retired: { count: number; ids: string[] };
 };
+export function networkChanges(
+  previous: {
+    clusters: readonly GroupLike[];
+    nodes: readonly NodeLike[];
+    edges: readonly EdgeLike[];
+  },
+  next: {
+    clusters: readonly GroupLike[];
+    nodes: readonly NodeLike[];
+    edges: readonly EdgeLike[];
+  },
+): { added: string[]; removed: string[]; changed: string[] };
 export function searchItems<T extends SearchItem>(
   query: string,
   items: readonly T[],

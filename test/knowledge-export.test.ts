@@ -205,7 +205,7 @@ test("knowledge an AI agent proposed stays when that agent is removed", async ()
     {
       id: w.people.agent.id,
       kind: "agent",
-      displayName: "Synthetic Copilot Agent",
+      displayName: "Synthetic Coding Agent",
     },
   );
 });

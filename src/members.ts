@@ -216,6 +216,41 @@ export async function createPrincipal(
   });
 }
 
+/**
+ * Trusted operator entry point (npm run github:link): lets an existing person sign in with one GitHub account.
+ * Never relinks a person or account silently; an existing different link must be resolved by hand.
+ */
+export async function linkGitHubAccount(
+  ctx: MemoryNetContext,
+  input: { principalId: string; githubUserId: string },
+): Promise<{ changed: boolean }> {
+  const principalId = requireId(input.principalId, "principalId");
+  const githubUserId = requireGithubId(input.githubUserId, "githubUserId");
+  return ctx.db.transaction(async (tx) => {
+    const { rows } = await tx.query<{ kind: PrincipalKind; github_user_id: string | null }>(
+      "SELECT kind, github_user_id FROM principals WHERE id = $1 FOR UPDATE",
+      [principalId],
+    );
+    const principal = rows[0];
+    if (!principal) throw new NotFoundError("Principal not found");
+    if (principal.kind !== "human") throw new ValidationError("Only people sign in with GitHub; agents act through bindings");
+    if (principal.github_user_id === githubUserId) return { changed: false };
+    if (principal.github_user_id !== null) throw new ConflictError("This person is already linked to a different GitHub account");
+    const taken = await tx.query("SELECT 1 FROM principals WHERE github_user_id = $1", [githubUserId]);
+    if (taken.rows.length > 0) throw new ConflictError("This GitHub account is already linked to a principal");
+    await tx.query("UPDATE principals SET github_user_id = $2 WHERE id = $1", [principalId, githubUserId]);
+    await recordAudit(tx, {
+      occurredAt: ctx.now(),
+      actorId: null,
+      action: "principal.github_linked",
+      targetType: "principal",
+      targetId: principalId,
+      details: { githubUserId },
+    });
+    return { changed: true };
+  });
+}
+
 /** Grants a role at one scope, replacing the principal's previous role at that exact scope. */
 export async function assignRole(
   ctx: MemoryNetContext,

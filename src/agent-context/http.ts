@@ -3,7 +3,8 @@ import type { MemoryNetContext } from "../context.ts";
 import { MemoryNetError } from "../errors.ts";
 import { SECURITY_HEADERS, type WebRequest, type WebResponse } from "../web/kit.ts";
 import { parseAgentBinding, type AgentBinding } from "./binding.ts";
-import { getAgentContext } from "./service.ts";
+import { AGENT_REVALIDATE_PATH, AGENT_CONTEXT_PATH, AGENT_PROPOSALS_PATH, AGENT_REPORTS_PATH, AGENT_TASK_CONTEXT_PATH } from "./contract.ts";
+import { revalidateAgentReceipt, getAgentContext, getAgentTaskContext, proposeAgentMemory, reportAgentMemory } from "./service.ts";
 
 export type AgentBindingLoader = () => Promise<AgentBinding>;
 function response(status: number, value: unknown): WebResponse {
@@ -11,9 +12,21 @@ function response(status: number, value: unknown): WebResponse {
 }
 const CODES = { validation_failed: 400, forbidden: 403, not_found: 404, conflict: 409, unavailable: 503 } as const;
 
+/** Each endpoint: its largest accepted body, its success status and the service call. */
+// The frozen v1 context endpoint keeps its bare error codes; newer endpoints explain refusals.
+const ENDPOINTS: Readonly<Record<string, { maxBytes: number; status: number; explain: boolean; run: (ctx: MemoryNetContext, binding: AgentBinding, input: unknown) => Promise<unknown> }>> = {
+  [AGENT_REVALIDATE_PATH]: { maxBytes: 1024, status: 200, explain: true, run: revalidateAgentReceipt },
+  [AGENT_CONTEXT_PATH]: { maxBytes: 8192, status: 200, explain: false, run: getAgentContext },
+  [AGENT_TASK_CONTEXT_PATH]: { maxBytes: 16_384, status: 200, explain: true, run: getAgentTaskContext },
+  [AGENT_PROPOSALS_PATH]: { maxBytes: 32_768, status: 201, explain: true, run: proposeAgentMemory },
+  [AGENT_REPORTS_PATH]: { maxBytes: 4096, status: 201, explain: true, run: reportAgentMemory },
+};
+
 /** Called only after createApp's loopback Host check. No session/System impersonation fallback. */
 export function createAgentContextHandler(ctx: MemoryNetContext, load: AgentBindingLoader) {
   return async (request: WebRequest): Promise<WebResponse> => {
+    const endpoint = ENDPOINTS[request.path];
+    if (!endpoint) return response(404, { error: "not_found" });
     if (request.method !== "POST") return response(405, { error: "method_not_allowed" });
     if (request.headers.origin !== undefined || request.headers["sec-fetch-site"] !== undefined) return response(403, { error: "browser_request_refused" });
     let binding: AgentBinding;
@@ -22,11 +35,15 @@ export function createAgentContextHandler(ctx: MemoryNetContext, load: AgentBind
     const given = request.headers.authorization ?? "";
     const expected = `Bearer ${binding.token}`;
     if (given.length > 256 || Buffer.byteLength(given) !== Buffer.byteLength(expected) || !timingSafeEqual(Buffer.from(given), Buffer.from(expected))) return response(403, { error: "not_authorized" });
-    if (!/^application\/json(?:\s*;.*)?$/i.test(request.headers["content-type"] ?? "") || Buffer.byteLength(request.body) > 8192 || request.query.size !== 0) return response(400, { error: "validation_failed" });
-    try { return response(200, await getAgentContext(ctx, binding, JSON.parse(request.body))); }
+    if (!/^application\/json(?:\s*;.*)?$/i.test(request.headers["content-type"] ?? "") || Buffer.byteLength(request.body) > endpoint.maxBytes || request.query.size !== 0) return response(400, { error: "validation_failed" });
+    try { return response(endpoint.status, await endpoint.run(ctx, binding, JSON.parse(request.body))); }
     catch (error) {
       if (error instanceof SyntaxError) return response(400, { error: "validation_failed" });
-      if (error instanceof MemoryNetError) return response(CODES[error.code], { error: error.code });
+      // Caller-safe messages explain refusals such as a project policy, never hidden records or credentials.
+      if (error instanceof MemoryNetError) {
+        const explain = endpoint.explain && error.code !== "unavailable" && !error.message.includes(binding.token);
+        return response(CODES[error.code], { error: error.code, ...(explain ? { message: error.message.slice(0, 300) } : {}) });
+      }
       return response(503, { error: "unavailable" });
     }
   };

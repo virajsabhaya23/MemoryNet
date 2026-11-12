@@ -22,8 +22,10 @@ import {
   badge,
   externalLink,
   html,
+  ledgerRow,
   options,
   preview,
+  recordHead,
   table,
   type SafeHtml,
 } from "../html.ts";
@@ -50,6 +52,7 @@ import {
   typeLabel,
 } from "../views.ts";
 import { LEVEL_LABEL } from "./sign-in.ts";
+import { relationFields, relationsFromForm } from "../relations-view.ts";
 
 export const TYPE_HINTS: Readonly<Record<MemoryType, string>> = {
   decision: "decision: what was chosen",
@@ -142,7 +145,7 @@ export function applicabilityView(value: DecisionApplicability | null | undefine
   const until = value.validUntil ? utc(value.validUntil) : null;
   const outside = now && (now.getTime() < Date.parse(from) || (until !== null && now.getTime() >= Date.parse(until)));
   return html`<section><h2>${proposed ? "Proposed applicability" : "Reviewed applicability"}</h2>
-    <dl class="facts"><dt>GitHub repository ID</dt><dd><code>${value.repositoryId}</code></dd>
+    <dl class="facts"><dt>Repository ID</dt><dd><code>${value.repositoryId}</code></dd>
       <dt>Exact branch</dt><dd><code>${value.branch}</code></dd>
       <dt>Valid from (inclusive)</dt><dd><code>${from}</code></dd>
       <dt>Valid until (exclusive)</dt><dd>${until ? html`<code>${until}</code>` : "No end date"}</dd></dl>
@@ -173,18 +176,16 @@ export async function memoriesSection(
   return html`<section${id ? html` id="${id}"` : ""}>
     <h2>${heading}</h2>
     ${hint === undefined ? "" : html`<p class="hint">${hint}</p>`}
-    ${table(
-      ["Title", "Status", "Type", "Owner", "Version", "Approved"],
-      memories.map((memory) => [
-        html`<a href="/memories/${memory.id}">${memory.title}</a>`,
-        memoryStatusBadge(memory.status),
-        badge(typeLabel(memory.type), "type"),
-        html`${nameOf(names, memory.ownerId)}`,
-        html`${memory.revision}`,
-        html`${memory.approvedAt}`,
-      ]),
-      empty,
-    )}
+    ${memories.length === 0
+      ? html`<p class="empty">${empty}</p>`
+      : html`<ul class="ledger">
+          ${memories.map((memory) => ledgerRow({
+            href: `/memories/${memory.id}`,
+            title: memory.title,
+            meta: html`${typeLabel(memory.type)} · ${nameOf(names, memory.ownerId)} · rev ${memory.revision} · approved ${memory.approvedAt}`,
+            trailing: memoryStatusBadge(memory.status),
+          }))}
+        </ul>`}
   </section>`;
 }
 
@@ -207,18 +208,16 @@ export async function proposalsSection(
       Proposals are not knowledge. Only contributors and above can see them, and
       a different reviewer must approve each one.
     </p>
-    ${table(
-      ["Title", "Type", "Status", "Proposed by", "Proposed"],
-      proposals.map((proposal) => [
-        html`<a href="/proposals/${proposal.id}">${proposal.title}</a>
-          ${flagBadges(proposal.flags)}`,
-        badge(typeLabel(proposal.type), "type"),
-        proposalStatusBadge(proposal.status),
-        html`${nameOf(names, proposal.proposedBy)}`,
-        html`${proposal.proposedAt}`,
-      ]),
-      "No proposals here.",
-    )}
+    ${proposals.length === 0
+      ? html`<p class="empty">No proposals here.</p>`
+      : html`<ul class="ledger">
+          ${proposals.map((proposal) => ledgerRow({
+            href: `/proposals/${proposal.id}`,
+            title: html`${proposal.title} ${flagBadges(proposal.flags)}`,
+            meta: html`${typeLabel(proposal.type)} · proposed by ${nameOf(names, proposal.proposedBy)} · ${proposal.proposedAt}`,
+            trailing: proposalStatusBadge(proposal.status),
+          }))}
+        </ul>`}
   </section>`;
 }
 
@@ -226,16 +225,16 @@ export function sourcesSection(sources: readonly Source[]): SafeHtml {
   return html`<section id="evidence">
     <h2>Sources you can read</h2>
     <p class="hint">Sources are raw evidence, not knowledge.</p>
-    ${table(
-      ["Evidence", "Excerpt", "Captured"],
-      sources.map((source) => [
-        html`<a href="/sources/${source.id}">${source.reference}</a>
-          ${flagBadges(source.flags)}`,
-        html`${preview(source.excerpt)}`,
-        html`${source.capturedAt}`,
-      ]),
-      "No sources you can read here.",
-    )}
+    ${sources.length === 0
+      ? html`<p class="empty">No sources you can read here.</p>`
+      : html`<ul class="ledger">
+          ${sources.map((source) => ledgerRow({
+            href: `/sources/${source.id}`,
+            title: html`${source.reference} ${flagBadges(source.flags)}`,
+            meta: preview(source.excerpt),
+            trailing: html`${source.capturedAt}`,
+          }))}
+        </ul>`}
   </section>`;
 }
 
@@ -249,6 +248,8 @@ export async function recordSourceSection(
     user.id,
     projectId,
   );
+  if (repositories.length && repositories.every(r => r.provider === "local")) return html`<section id="record-evidence"><h2>Record local evidence</h2>
+    <p>Stop the app and run <code>npm run workspace -- import</code> with the selected project, commit and document. Imported evidence appears here for review.</p></section>`;
   if (repositories.length === 0) {
     return html`<section id="record-evidence">
       <h2>Record pull request evidence</h2>
@@ -258,7 +259,7 @@ export async function recordSourceSection(
   return html`<section id="record-evidence">
     <h2>Record pull request evidence</h2>
     <p class="hint">
-      Only pull requests are supported for now. Text that looks like a secret is
+      This form records GitHub pull requests. Text that looks like a secret is
       refused.
     </p>
     ${postForm(
@@ -268,7 +269,7 @@ export async function recordSourceSection(
           >Repository
           <select name="externalRepositoryId" required>
             ${options(
-              repositories.map((repository) => ({
+              repositories.filter(r => r.provider === "github").map((repository) => ({
                 value: repository.externalRepositoryId,
                 label: repository.fullName,
               })),
@@ -326,6 +327,7 @@ export async function proposeSection(
     label: `${person.displayName} (${person.role})`,
   }));
   const applicability = await applicabilityFields(rc, projectId);
+  const relations = await relationFields(rc, projectId);
   return html`<section id="propose-memory">
     <h2>Propose a memory</h2>
     ${postForm(
@@ -363,6 +365,7 @@ export async function proposeSection(
           )}
         </fieldset>
         ${applicability}
+        ${relations}
         <label
           >Owner, the person accountable for keeping it correct
           <select name="ownerId" ${user.kind === "agent" ? html`required` : ""}>
@@ -401,9 +404,13 @@ async function sourcePage(rc: RequestContext): Promise<WebResponse> {
   return page(rc, {
     title: `Source ${source.reference}`,
     crumbs: projectCrumbs(view),
-    body: html`<p>
-        ${externalLink(source.url, source.url)} ${flagBadges(source.flags)}
-      </p>
+    body: html`${recordHead({
+        kind: "Source",
+        title: source.reference,
+        status: flagBadges(source.flags),
+        meta: html`Repository ${source.externalRepositoryId} · Captured ${source.captureMethod === "github_app" ? "by the GitHub App" : `by ${nameOf(names, source.capturedBy)}`} on ${source.capturedAt}`,
+        actions: externalLink(source.url, source.url),
+      })}
       <p class="hint">A source is raw evidence, not knowledge.</p>
       <section>
         <h2>Excerpt</h2>
@@ -473,6 +480,7 @@ async function proposeAction(rc: RequestContext): Promise<WebResponse> {
   }
   const ownerId = formValue(rc, "ownerId");
   const applicability = applicabilityFromForm(rc);
+  const relations = relationsFromForm(rc);
   const proposal = await proposeMemory(rc.ctx, user.id, {
     projectId: rc.params.id ?? "",
     type: (formValue(rc, "type") ?? "") as MemoryType,
@@ -481,6 +489,7 @@ async function proposeAction(rc: RequestContext): Promise<WebResponse> {
     evidenceSourceIds,
     ...(ownerId === undefined ? {} : { ownerId }),
     ...(applicability === undefined ? {} : { applicability }),
+    ...(relations === undefined ? {} : { relations }),
   });
   return user.kind === "agent"
     ? redirect(`/projects/${proposal.projectId}`, "proposed-by-agent")

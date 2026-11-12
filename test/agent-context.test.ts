@@ -5,9 +5,12 @@ import { join } from "node:path";
 import { test } from "node:test";
 import { z } from "zod";
 import { parseAgentBinding, readAgentBindingFile, writeAgentBindingFile, type AgentBinding } from "../src/agent-context/binding.ts";
-import { AgentContextSchema, AgentQuerySchema, AGENT_CONTEXT_PATH } from "../src/agent-context/contract.ts";
-import { getAgentContext } from "../src/agent-context/service.ts";
-import { createContext, ForbiddenError, ValidationError } from "../src/index.ts";
+import { AGENT_CONTRACT_SCHEMAS, AgentContextSchema, AgentQuerySchema, AGENT_CONTEXT_PATH } from "../src/agent-context/contract.ts";
+import { getAgentContext, getAgentTaskContext, revalidateAgentReceipt } from "../src/agent-context/service.ts";
+import {
+  approveDefinitionProposal, approveProposal, createContext, ForbiddenError, proposeChange, proposeDefinition, proposeDefinitionChange,
+  proposeDefinitionRetirement, proposeMemory, ValidationError,
+} from "../src/index.ts";
 import { createContextBridge } from "../src/mcp/bridge.ts";
 import { createApp } from "../src/web/app.ts";
 import { buildWorld, START, useTestDatabase } from "./helpers.ts";
@@ -84,12 +87,15 @@ test("local binding generator uses exclusive owner-only files, short expiry and 
     await writeAgentBindingFile(file, input, START);
     const b = await readAgentBindingFile(file);
     assert.equal(Date.parse(b.expiresAt) - START.getTime(), 86_400_000);
-    assert.equal((await stat(file)).mode & 0o777, 0o600);
+    if (process.platform !== "win32") assert.equal((await stat(file)).mode & 0o777, 0o600);
     const original = await readFile(file, "utf8");
     await assert.rejects(writeAgentBindingFile(file, input, START));
     assert.equal(await readFile(file, "utf8"), original);
-    await chmod(file, 0o644);
-    await assert.rejects(readAgentBindingFile(file), ValidationError);
+    // Windows has no POSIX mode bits; bindings there rely on the user profile's owner-only ACLs.
+    if (process.platform !== "win32") {
+      await chmod(file, 0o644);
+      await assert.rejects(readAgentBindingFile(file), ValidationError);
+    }
   } finally { await rm(folder, { recursive: true, force: true }); }
 });
 
@@ -99,8 +105,74 @@ test("bridge refuses non-loopback and ambiguous destinations without making requ
   }
 });
 
-test("checked-in JSON schemas match the executable v1 contract", async () => {
-  for (const [name, schema] of [["agent-query-v1", AgentQuerySchema], ["agent-context-v1", AgentContextSchema]] as const) {
-    assert.deepEqual(JSON.parse(await readFile(new URL(`../docs/contracts/${name}.schema.json`, import.meta.url), "utf8")), z.toJSONSchema(schema));
+test("checked-in JSON schemas match the executable contracts", async () => {
+  for (const [name, schema] of AGENT_CONTRACT_SCHEMAS) {
+    assert.deepEqual(JSON.parse(await readFile(new URL(`../docs/contracts/${name}.schema.json`, import.meta.url), "utf8")), z.toJSONSchema(schema), name);
   }
+});
+
+test("revalidation hides foreign receipts, refuses expired authority and keeps empty or legacy receipts unknown", async () => {
+  const w = await buildWorld(env.ctx), b = binding(w);
+  const { revalidateAgentReceipt } = await import("../src/agent-context/service.ts");
+  const received = await getAgentContext(env.ctx, b, { query: "controlled" });
+  const query = { retrievalId: received.retrievalId };
+  assert.deepEqual(await revalidateAgentReceipt(env.ctx, b, query), { status: "UNKNOWN", items: [], definitions: [] });
+  const denied = await revalidateAgentReceipt(env.ctx, { ...b, branch: "unrelated" }, query).catch(e => e);
+  assert.ok(denied instanceof ForbiddenError);
+  await assert.rejects(revalidateAgentReceipt(env.ctx, { ...b, expiresAt: START.toISOString() }, query), ForbiddenError);
+  const { approveProposal, proposeMemory, suspendMemory, reinstateMemory } = await import("../src/index.ts");
+  const p = await proposeMemory(env.ctx, w.people.contributor.id, { projectId: b.projectId, type: "decision", title: "Hedge policy",
+    content: "No hedged requests.", evidenceSourceIds: [w.sources.alpha.id], applicability: { repositoryId: "1001", branch: "main", validFrom: START } });
+  const m = await approveProposal(env.ctx, w.people.reviewer.id, { proposalId: p.id, expectedRevision: 1 });
+  const r = await getAgentContext(env.ctx, b, { query: "hedge" }); assert.equal(r.current.length, 1);
+  const check = () => revalidateAgentReceipt(env.ctx, b, { retrievalId: r.retrievalId });
+  assert.equal((await check()).status, "CURRENT");
+  const legacyId = await env.db.transaction(async tx => {
+    const { rows: [legacy] } = await tx.query<{ id: string }>(`INSERT INTO retrievals (project_id,caller_id,search_terms,outcome,retrieved_at,applicability)
+      SELECT project_id,caller_id,search_terms,outcome,retrieved_at,applicability FROM retrievals WHERE id=$1 RETURNING id`, [r.retrievalId]);
+    await tx.query("INSERT INTO retrieval_items (retrieval_id,position,memory_id,revision,status) VALUES ($1,1,$2,1,'approved')", [legacy!.id, m.id]);
+    return legacy!.id;
+  });
+  assert.equal((await revalidateAgentReceipt(env.ctx, b, { retrievalId: legacyId })).status, "UNKNOWN");
+  await suspendMemory(env.ctx, w.people.reviewer.id, { memoryId: m.id, expectedRevision: 1, reason: "Fixture review" });
+  await reinstateMemory(env.ctx, w.people.reviewer.id, { memoryId: m.id, expectedRevision: 1, reason: "Fixture rechecked" });
+  assert.deepEqual((await check()).items[0]?.reasons, ["lifecycle_changed"]);
+});
+
+test("revalidation reports a delivered definition that changed, was retired or whose basis changed after delivery", async () => {
+  const w = await buildWorld(env.ctx), b = binding(w);
+  const proposed = await proposeMemory(env.ctx, w.people.contributor.id, { projectId: b.projectId, type: "decision", title: "Sessions use signed cookies",
+    content: "Synthetic: sessions live in HttpOnly cookies.", evidenceSourceIds: [w.sources.alpha.id], applicability: { repositoryId: "1001", branch: "main", validFrom: START } });
+  const basis = await approveProposal(env.ctx, w.people.reviewer.id, { proposalId: proposed.id, expectedRevision: 1 });
+  const content = { name: "Session handling rule", purpose: "Synthetic purpose.", responsibilities: ["Synthetic duty"], links: [{ relation: "based_on" as const, targetId: basis.id }] };
+  const approve = (proposal: { id: string; revision: number }) => approveDefinitionProposal(env.ctx, w.people.reviewer.id, { proposalId: proposal.id, expectedRevision: proposal.revision });
+  const rule = await approve(await proposeDefinition(env.ctx, w.people.contributor.id, { scope: { level: "project", id: b.projectId }, kind: "rule", ...content }));
+  const check = (retrievalId: string) => revalidateAgentReceipt(env.ctx, b, { retrievalId });
+  const pin = (pinnedRevision: number, observedRevision: number, reasons: string[]) => [{ definitionId: rule.id, pinnedRevision, observedRevision, reasons }];
+
+  const withDecision = await getAgentTaskContext(env.ctx, b, { task: "session cookies" });
+  assert.deepEqual(withDecision.items.map((item) => item.memoryId), [basis.id]);
+  assert.deepEqual(await check(withDecision.retrievalId), { status: "CURRENT", items: [{ memoryId: basis.id, pinnedRevision: 1, observedRevision: 1, reasons: [], replacement: null }], definitions: pin(1, 1, []) });
+  env.advance(1000);
+  await approve(await proposeDefinitionChange(env.ctx, w.people.contributor.id, { definitionId: rule.id, baseRevision: 1, ...content, instructions: "Synthetic: rotate keys." }));
+  const changed = await check(withDecision.retrievalId);
+  assert.equal(changed.status, "STALE", "a changed definition makes the receipt stale even when its decisions are current");
+  assert.deepEqual([changed.items[0]?.reasons, changed.definitions], [[], pin(1, 2, ["revision_changed"])]);
+
+  const definitionsOnly = await getAgentTaskContext(env.ctx, b, { task: "logging format" });
+  assert.deepEqual([definitionsOnly.outcome, definitionsOnly.definitions.map((d) => [d.revision, d.reviewNeeded])], ["no_results", [[2, false]]]);
+  assert.deepEqual(await check(definitionsOnly.retrievalId), { status: "UNKNOWN", items: [], definitions: pin(2, 2, []) }, "no decisions delivered stays unknown");
+  env.advance(1000);
+  const replace = await proposeChange(env.ctx, w.people.contributor.id, { memoryId: basis.id, expectedRevision: 1, kind: "replace", type: "decision",
+    title: "Sessions use server storage", content: "Synthetic: sessions live on the server.", evidenceSourceIds: [w.sources.alpha.id] });
+  const replacement = await approveProposal(env.ctx, w.people.reviewer.id, { proposalId: replace.id, expectedRevision: 1 });
+  assert.deepEqual(await check(definitionsOnly.retrievalId), { status: "STALE", items: [], definitions: pin(2, 2, ["basis_changed"]) });
+
+  env.advance(1000);
+  const flagged = await getAgentTaskContext(env.ctx, b, { task: "logging format" });
+  assert.deepEqual(flagged.definitions.map((d) => [d.reviewNeeded, d.basedOn]), [[true, [{ memoryId: basis.id, change: "superseded", replacedBy: replacement.id }]]]);
+  assert.deepEqual((await check(flagged.retrievalId)).definitions, pin(2, 2, []), "a basis that changed before delivery was already flagged");
+  await approve(await proposeDefinitionRetirement(env.ctx, w.people.contributor.id, { definitionId: rule.id, baseRevision: 2, reason: "Synthetic: replaced by server sessions" }));
+  assert.deepEqual(await check(flagged.retrievalId), { status: "STALE", items: [], definitions: pin(2, 3, ["revision_changed", "retired"]) });
+  assert.deepEqual((await getAgentTaskContext(env.ctx, b, { task: "logging format" })).definitions, [], "retired definitions are never delivered");
 });

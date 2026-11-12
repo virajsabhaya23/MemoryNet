@@ -60,6 +60,62 @@ export function badge(label: string, variant = "neutral"): SafeHtml {
   return html`<span class="badge badge-${variant}">${label}</span>`;
 }
 
+const VOID_TAG = /^<(?:area|base|br|col|embed|hr|img|input|link|meta|source|track|wbr)\b/i;
+const SEPARATOR = /^\s+·\s+/;
+const MEASURED = /\b\d{4}-\d{2}-\d{2} \d{2}:\d{2} UTC\b|\b(?:version|rev) \d+\b/gi;
+
+/** Wraps versions and UTC times in text outside tags as measured values. */
+function markMeasured(fragment: string): string {
+  return fragment
+    .split(/(<[^>]*>)/)
+    .map((piece) =>
+      piece.startsWith("<")
+        ? piece
+        : piece.replace(MEASURED, (value) =>
+            /UTC$/.test(value)
+              ? `<time class="measured" datetime="${value.replace(" ", "T").replace(" UTC", "Z")}">${value}</time>`
+              : `<span class="measured">${value}</span>`,
+          ),
+    )
+    .join("");
+}
+
+/**
+ * A meta line whose parts a template joined with " · ": each top-level part becomes its own span, divided by a
+ * hairline instead of a dot, and versions and times read as measured values. Separators inside tags are kept.
+ */
+export function metaLine(meta: SafeHtml | string): SafeHtml {
+  const raw = typeof meta === "string" ? escapeHtml(meta) : meta.__html;
+  const parts: string[] = [];
+  let depth = 0;
+  let current = "";
+  let index = 0;
+  while (index < raw.length) {
+    if (raw[index] === "<") {
+      const end = raw.indexOf(">", index);
+      const tag = end === -1 ? raw.slice(index) : raw.slice(index, end + 1);
+      if (tag.startsWith("</")) depth = Math.max(0, depth - 1);
+      else if (!tag.endsWith("/>") && !VOID_TAG.test(tag)) depth += 1;
+      current += tag;
+      index += tag.length;
+      continue;
+    }
+    const separator = depth === 0 ? SEPARATOR.exec(raw.slice(index)) : null;
+    if (separator) {
+      parts.push(current);
+      current = "";
+      index += separator[0].length;
+      continue;
+    }
+    current += raw[index];
+    index += 1;
+  }
+  parts.push(current);
+  const kept = parts.map((part) => part.trim()).filter((part) => part !== "");
+  if (kept.length <= 1) return { __html: markMeasured(raw) };
+  return { __html: kept.map((part) => `<span class="meta-part">${markMeasured(part)}</span>`).join("") };
+}
+
 /** First characters of longer text, for lists. */
 export function preview(text: string, max = 160): string {
   const flat = text.replace(/\s+/g, " ").trim();
@@ -82,7 +138,7 @@ export function table(
       <tbody>
         ${rows.map(
           (cells) => html`<tr>
-            ${cells.map((cell) => html`<td>${cell}</td>`)}
+            ${cells.map((cell, index) => html`<td data-label="${headers[index] ?? ""}">${cell}</td>`)}
           </tr>`,
         )}
       </tbody>
@@ -102,4 +158,62 @@ export function options(
         </option>`,
     ),
   );
+}
+
+/** Label/value pairs as a hairline-divided strip (Console stat strip). */
+export function statStrip(
+  items: ReadonlyArray<readonly [label: string, value: string | number]>,
+): SafeHtml {
+  return html`<dl class="stat-strip">
+    ${items.map(
+      ([label, value]) => html`<div><dt>${label}</dt><dd>${value}</dd></div>`,
+    )}
+  </dl>`;
+}
+
+/** One ledger row: title, meta line, trailing state/actions; whole-row link when href is given. */
+export function ledgerRow(input: {
+  href?: string;
+  title: SafeHtml | string;
+  meta?: SafeHtml | string;
+  trailing?: SafeHtml | string;
+}): SafeHtml {
+  const title = input.href
+    ? html`<a class="row-title" href="${input.href}">${input.title}</a>`
+    : html`<span class="row-title">${input.title}</span>`;
+  return html`<li class="ledger-row">
+    ${title}
+    ${input.meta !== undefined ? html`<span class="row-meta">${metaLine(input.meta)}</span>` : ""}
+    ${input.trailing !== undefined ? html`<span class="row-trailing">${input.trailing}</span>` : ""}
+  </li>`;
+}
+
+/** The record page header: kind badge, title, status, meta line, actions. */
+export function recordHead(input: {
+  kind: SafeHtml | string;
+  title: string;
+  status?: SafeHtml | string;
+  meta?: SafeHtml | string;
+  actions?: SafeHtml | string;
+}): SafeHtml {
+  return html`<header class="record-head">
+    <div>
+      <span class="record-kind">${input.kind}</span>
+      <p class="record-title">${input.title}</p>
+      ${input.status !== undefined ? html`<span class="record-status">${input.status}</span>` : ""}
+    </div>
+    ${input.actions !== undefined ? html`<div class="record-actions">${input.actions}</div>` : ""}
+    ${input.meta !== undefined ? html`<p class="record-meta">${metaLine(input.meta)}</p>` : ""}
+  </header>`;
+}
+
+/** Tab-like scope navigation over existing URLs and in-page anchors. */
+export function scopeTabs(
+  tabs: ReadonlyArray<{ label: string; href: string; count?: number; current?: boolean }>,
+): SafeHtml {
+  return html`<nav class="scope-tabs" aria-label="Scope sections">
+    ${tabs.map(
+      (tab) => html`<a href="${tab.href}" ${tab.current ? html`aria-current="page"` : ""}>${tab.label}${tab.count !== undefined ? html`<span class="tab-count">${tab.count}</span>` : ""}</a>`,
+    )}
+  </nav>`;
 }

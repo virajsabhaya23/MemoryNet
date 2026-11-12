@@ -1,9 +1,11 @@
-// Interactive brain map. It draws only the data block the server embedded in the page, which
-// already holds nothing but what the signed-in person may see. It fetches nothing and runs no data.
+// Interactive brain map. It draws the data block the server embedded in the page, which already
+// holds nothing but what the signed-in person may see, then newer copies of that same payload from
+// the page's live check. It runs no data.
 // The map itself is a canvas drawn by graph-engine.js: a force-directed network where every
 // organization, business unit, and project is a hub its knowledge gathers around.
 import { ICON_GLYPHS } from "./icons.js";
 import { createGraphView } from "./graph-engine.js";
+import { cardMeta, wrapTitle } from "./graph-tiers.js";
 import {
   brainRegistry,
   decodeViewState,
@@ -16,6 +18,7 @@ import {
   MAX_PINS,
   MODES,
   nearestInDirection,
+  networkChanges,
   nodeStates,
   parseSavedViews,
   provenancePaths,
@@ -40,48 +43,89 @@ const TIER_TEXT = {
   micro: "Full detail",
 };
 
-/** Colours by kind, and by memory type for memories. Darker variants for the light theme. */
+/** Console kind roles: knowledge in ink, guidance in muted neutrals, evidence and agent accounts in cool, people in amber, incidents in bad. */
 const PALETTE = {
   dark: {
-    organization: "#c6d6ee",
-    business_unit: "#acb7e7",
-    project: "#90b6ff",
-    rule: "#acb7e7",
-    instruction: "#b2bfdc",
-    skill: "#dbc186",
-    agent: "#9bbcdf",
-    memory: "#90b6ff",
-    source: "#8dbbff",
-    person: "#acbfd9",
-    agent_account: "#7fd1ff",
-    decision: "#90b6ff",
-    rationale: "#56b6ff",
-    constraint: "#ff8a65",
-    lesson: "#b7f15a",
-    failed_approach: "#ffc145",
-    incident: "#ff5d73",
+    organization: "#d3d8de",
+    business_unit: "#b8bec5",
+    project: "#9fa5ac",
+    rule: "#b2b8bf",
+    instruction: "#a5acb2",
+    skill: "#999fa6",
+    agent: "#bec5cc",
+    memory: "#eceff2",
+    source: "#6ebcfc",
+    person: "#f7b83d",
+    agent_account: "#a5d0f6",
+    decision: "#eceff2",
+    rationale: "#ced1d5",
+    constraint: "#e2ded5",
+    lesson: "#c0c5c9",
+    failed_approach: "#f19e97",
+    incident: "#f66d67",
   },
   light: {
-    organization: "#536c8e",
-    business_unit: "#5968a8",
-    project: "#215dc6",
-    rule: "#5968a8",
-    instruction: "#536c8e",
-    skill: "#896518",
-    agent: "#3d6a98",
-    memory: "#215dc6",
-    source: "#21766d",
-    person: "#536c8e",
-    agent_account: "#1f86b8",
-    decision: "#215dc6",
-    rationale: "#1f74c9",
-    constraint: "#d1522b",
-    lesson: "#5d9a12",
-    failed_approach: "#c98a00",
-    incident: "#d0283f",
+    organization: "#322d29",
+    business_unit: "#47413c",
+    project: "#5d5751",
+    rule: "#423c37",
+    instruction: "#4d4641",
+    skill: "#58514c",
+    agent: "#38322d",
+    memory: "#17130f",
+    source: "#116bb5",
+    person: "#a15c00",
+    agent_account: "#23588a",
+    decision: "#17130f",
+    rationale: "#2d2824",
+    constraint: "#231e19",
+    lesson: "#3c3733",
+    failed_approach: "#b75b53",
+    incident: "#b6322d",
   },
 };
-const BADGE = { pending: "#dbc186", flagged: "#ff5fa2", warning: "#ff6b6b" };
+const BADGE = { pending: "#e6ac3d", flagged: "#ec5b57", warning: "#ef774b" };
+/** Map-only identity hues, one per repository cell; they stay clear of amber, cool blue, ok and bad. */
+const TERRITORY = {
+  dark: [
+    "#c2a7f4",
+    "#51cec7",
+    "#ed9ac1",
+    "#a7c474",
+    "#db9fde",
+    "#a28acd",
+    "#3baca6",
+    "#c77ea1",
+    "#8aa35d",
+    "#b883ba",
+  ],
+  light: [
+    "#6f4fa1",
+    "#007974",
+    "#973f6e",
+    "#526f00",
+    "#87458b",
+    "#573c7f",
+    "#005f5a",
+    "#772f55",
+    "#3f5700",
+    "#6a356e",
+  ],
+};
+
+function mixHex(hex, other, t) {
+  const parse = (value) =>
+    [1, 3, 5].map((at) => parseInt(value.slice(at, at + 2), 16));
+  const a = parse(hex);
+  const b = parse(other);
+  return `#${a
+    .map((value, index) =>
+      Math.round(value + (b[index] - value) * t)
+        .toString(16)
+        .padStart(2, "0"),
+    )
+    .join("")}`;
+}
 const HUB_RADIUS = { organization: 17, business_unit: 12.5, project: 9.5 };
 const NODE_RADIUS = {
   agent: 9,
@@ -222,16 +266,35 @@ const MEMORY_GLYPHS = {
     stroke: "M-4.8-.4H4.8V6.2H-4.8ZM-2.9-.4V-2.8A2.9 2.9 0 0 1 2.9-2.8V-.4",
   },
   lesson: {
-    stroke: "M0-6V7M0-6C-3-8-6-8-8-7V5C-5 4-2 5 0 7M0-6C3-8 6-8 8-7V5C5 4 2 5 0 7",
+    stroke:
+      "M0-6V7M0-6C-3-8-6-8-8-7V5C-5 4-2 5 0 7M0-6C3-8 6-8 8-7V5C5 4 2 5 0 7",
   },
   failed_approach: { stroke: "M-4.6-4.6 4.6 4.6M4.6-4.6-4.6 4.6" },
   incident: { stroke: "M0-5.8V1.4M0 5.2V5.4" },
 };
 
-function glyphShape(kind, memoryType) {
+/** Evidence shows what it is: a pull request, a commit, an issue, or a document. */
+function sourceGlyph(reference) {
+  const ref = String(reference ?? "");
+  if (ref.startsWith("commit/")) return GLYPHS.commit;
+  if (ref.startsWith("issues/")) return GLYPHS.issue;
+  if (ref === "" || ref.startsWith("pull/")) return GLYPHS.source;
+  return GLYPHS.document;
+}
+
+function glyphShape(kind, memoryType, reference) {
   if (kind === "memory" && memoryType && MEMORY_GLYPHS[memoryType])
     return MEMORY_GLYPHS[memoryType];
+  if (kind === "source" && reference !== undefined)
+    return sourceGlyph(reference);
   return GLYPHS[kind] ?? GLYPHS.memory;
+}
+
+/** A hub's sign: a repository when the project is one, otherwise its level. */
+function hubGlyph(cluster) {
+  if (cluster.level === "project")
+    return cluster.name.includes("/") ? GLYPHS.repository : GLYPHS.project;
+  return GLYPHS[cluster.level] ?? GLYPHS.project;
 }
 
 function appendGlyph(holder, shape) {
@@ -332,38 +395,45 @@ function start(data) {
   const compare = $("net-compare");
   const dock = $("net-dock");
 
-  const legend = data.legend;
-  const clusters = data.clusters;
-  const nodes = data.nodes;
-  const edges = data.edges;
+  // The records drawn: the page's own copy first, then each newer copy the live check brings.
+  let legend;
+  let clusters;
+  let nodes;
+  let edges;
+  let clusterById;
+  let nodeById;
+  let edgeById;
+  let edgesOf;
+  let statesOf;
+  let measures;
+  let events;
+  let known;
+  function deriveRecords() {
+    legend = data.legend;
+    clusters = data.clusters;
+    nodes = data.nodes;
+    edges = data.edges;
+    clusterById = new Map(clusters.map((cluster) => [cluster.id, cluster]));
+    nodeById = new Map(nodes.map((node) => [node.id, node]));
+    edgeById = new Map(edges.map((edge) => [edge.id, edge]));
+    edgesOf = new Map(nodes.map((node) => [node.id, []]));
+    for (const edge of edges) {
+      edgesOf.get(edge.from)?.push(edge);
+      edgesOf.get(edge.to)?.push(edge);
+    }
+    statesOf = new Map(nodes.map((node) => [node.id, nodeStates(node)]));
+    measures = groupMeasures(clusters, nodes, data.generatedAt);
+    events = timelineEvents(nodes);
+    known = {
+      nodes: new Set(nodeById.keys()),
+      clusters: new Set(clusterById.keys()),
+      kinds: new Set(Object.keys(legend.nodes)),
+      relations: new Set(Object.keys(legend.relations)),
+    };
+  }
+  deriveRecords();
   // Visible before measuring, so the first fit uses the real canvas size.
   app.classList.add("ready");
-  const clusterById = new Map(clusters.map((cluster) => [cluster.id, cluster]));
-  const nodeById = new Map(nodes.map((node) => [node.id, node]));
-  const edgeById = new Map(edges.map((edge) => [edge.id, edge]));
-  const parentOf = new Map(
-    clusters.map((cluster) => [cluster.id, cluster.parentId]),
-  );
-  const rootOf = new Map(
-    clusters.map((cluster) => [
-      cluster.id,
-      groupPath(clusterById, cluster.id)[0]?.id ?? cluster.id,
-    ]),
-  );
-  const edgesOf = new Map(nodes.map((node) => [node.id, []]));
-  for (const edge of edges) {
-    edgesOf.get(edge.from)?.push(edge);
-    edgesOf.get(edge.to)?.push(edge);
-  }
-  const statesOf = new Map(nodes.map((node) => [node.id, nodeStates(node)]));
-  const measures = groupMeasures(clusters, nodes, data.generatedAt);
-  const events = timelineEvents(nodes);
-  const known = {
-    nodes: new Set(nodeById.keys()),
-    clusters: new Set(clusterById.keys()),
-    kinds: new Set(Object.keys(legend.nodes)),
-    relations: new Set(Object.keys(legend.relations)),
-  };
   const storeKey = (what) =>
     `memorynet.${what}.${data.organization.id}.${data.viewer.id}`;
   const reduceMotion = window.matchMedia(
@@ -391,6 +461,8 @@ function start(data) {
   };
   let selected = null;
   let trace = null;
+  // While replaying, only records made up to `until` are drawn.
+  let replay = null;
   let hovered = null;
   let visible = { nodes: new Set(), edges: new Set() };
   let drawnEdges = new Set();
@@ -417,6 +489,7 @@ function start(data) {
     reduceMotion,
     theme: themeName(),
     font: getComputedStyle(document.body).fontFamily,
+    cells: true,
   });
   engine.setZoomLimits(0.03, 6);
   const view = engine.camera;
@@ -428,26 +501,84 @@ function start(data) {
     return owns ? owns.from : null;
   }
 
-  const depthOf = new Map(
-    clusters.map((cluster) => [
-      cluster.id,
-      groupPath(clusterById, cluster.id).length - 1,
-    ]),
-  );
-  const root = clusters.find((cluster) => cluster.parentId === null) ?? null;
-  const hubIds = new Set(clusters.map((cluster) => cluster.id));
-  const weightOf = new Map(clusters.map((cluster) => [cluster.id, 0]));
-  for (const node of nodes) {
-    for (const cluster of groupPath(clusterById, node.clusterId)) {
-      weightOf.set(cluster.id, (weightOf.get(cluster.id) ?? 0) + 1);
-    }
+  // What the map derives from the records; deriveMap() builds it again after a live change.
+  let depthOf;
+  let root;
+  let hubIds;
+  let weightOf;
+  let territoryIndex;
+  let generatedAt;
+  let degreeOf;
+  let citedByOf;
+  let pendingOfCluster;
+  let engineNodes;
+  let engineNodeById;
+  let engineLinks;
+  let ambientLinks;
+
+  function territoryHue(clusterId, theme) {
+    const index = territoryIndex.get(clusterId);
+    if (index === undefined) return null;
+    const hues = TERRITORY[theme] ?? TERRITORY.dark;
+    return hues[index % hues.length];
   }
 
-  function colorOf(item, palette) {
-    if (item.hub) return palette[item.kind] ?? palette.project;
+  function colorOf(item, palette, theme) {
+    if (item.hub)
+      return (
+        territoryHue(item.id, theme) ?? palette[item.kind] ?? palette.project
+      );
+    // Some colours keep their meaning everywhere: people amber, agent accounts cool, incidents bad.
+    if (item.kind === "person" || item.kind === "agent_account")
+      return palette[item.kind];
+    if (
+      item.kind === "memory" &&
+      (item.memoryType === "incident" || item.memoryType === "failed_approach")
+    )
+      return palette[item.memoryType];
+    const hue = territoryHue(item.group, theme);
+    if (!hue) {
+      if (item.kind === "memory")
+        return palette[item.memoryType] ?? palette.memory;
+      return palette[item.kind] ?? palette.memory;
+    }
+    // Knowledge shines a little brighter than the evidence behind it.
     if (item.kind === "memory")
-      return palette[item.memoryType] ?? palette.memory;
-    return palette[item.kind] ?? palette.memory;
+      return mixHex(hue, theme === "dark" ? "#ffffff" : "#000000", 0.2);
+    if (item.kind === "source")
+      return mixHex(hue, theme === "dark" ? "#0d1013" : "#faf8f4", 0.15);
+    return hue;
+  }
+
+  /** How recently something changed: 1 today, fading to 0 over three weeks; waiting work stays lit. */
+  function activityOf(node) {
+    const details = node.details ?? {};
+    let latest = -Infinity;
+    for (const value of [
+      details.capturedAt,
+      details.approvedAt,
+      details.updatedAt,
+      details.createdAt,
+    ]) {
+      const at = Date.parse(value ?? "");
+      if (Number.isFinite(at)) latest = Math.max(latest, at);
+    }
+    let activity =
+      Number.isFinite(latest) && Number.isFinite(generatedAt)
+        ? Math.max(
+            0,
+            Math.min(
+              1,
+              1 - (generatedAt - latest) / (21 * 24 * 60 * 60 * 1000),
+            ),
+          )
+        : 0;
+    if (
+      (details.pendingChanges ?? 0) > 0 ||
+      (details.warnings?.length ?? 0) > 0
+    )
+      activity = Math.max(activity, 0.85);
+    return activity;
   }
 
   function badgeOf(node) {
@@ -459,89 +590,217 @@ function start(data) {
     return null;
   }
 
-  const degreeOf = new Map(nodes.map((node) => [node.id, 0]));
-  for (const edge of edges) {
-    degreeOf.set(edge.from, (degreeOf.get(edge.from) ?? 0) + 1);
-    degreeOf.set(edge.to, (degreeOf.get(edge.to) ?? 0) + 1);
+  function cardOf(node) {
+    const states = statesOf.get(node.id) ?? [];
+    const details = node.details ?? {};
+    const attention = [];
+    if ((details.warnings?.length ?? 0) > 0)
+      attention.push(
+        `${details.warnings.length} ${details.warnings.length === 1 ? "warning" : "warnings"}`,
+      );
+    if ((details.pendingChanges ?? 0) > 0)
+      attention.push(`${details.pendingChanges} waiting`);
+    if (states.includes("flagged")) attention.push("Flagged");
+    return {
+      kindLabel: legend.nodes[node.kind]?.label ?? node.kind,
+      statusLabel:
+        states.length > 0
+          ? (legend.states[states[0]]?.label ?? states[0])
+          : "Current",
+      lines: wrapTitle(node.label),
+      meta: cardMeta(node, citedByOf.get(node.id) ?? 0, data.generatedAt),
+      attention: attention.length > 0 ? attention.join(" · ") : null,
+    };
   }
 
-  const engineNodes = [
-    ...clusters.map((cluster) => ({
-      id: cluster.id,
-      group: cluster.parentId,
-      hub: true,
-      kind: cluster.level,
-      depth: depthOf.get(cluster.id) ?? 0,
-      // A repository's owner is already the group it sits in, so its name is enough.
-      label:
-        cluster.level === "project" && cluster.name.includes("/")
-          ? cluster.name.slice(cluster.name.lastIndexOf("/") + 1)
-          : cluster.name,
-      r:
-        (HUB_RADIUS[cluster.level] ?? 9) +
-        Math.min(Math.sqrt(weightOf.get(cluster.id) ?? 0) * 0.35, 9),
-      weight: weightOf.get(cluster.id) ?? 0,
-      color: "#888888",
-    })),
-    ...nodes.map((node) => {
-      const degree = degreeOf.get(node.id) ?? 0;
-      return {
-        id: node.id,
-        group: node.clusterId,
-        hub: false,
-        kind: node.kind,
-        memoryType: node.kind === "memory" ? node.details.type : null,
-        label: node.label,
-        r: (NODE_RADIUS[node.kind] ?? 6) + Math.min(degree, 12) * 0.32,
-        weight: degree,
-        labelAt: DEFINITION_KINDS.has(node.kind) ? 5 : 8,
-        glyph: glyphShape(node.kind, node.details.type),
-        badge: badgeOf(node),
-        retired: node.status === "retired",
+  function deriveMap() {
+    depthOf = new Map(
+      clusters.map((cluster) => [
+        cluster.id,
+        groupPath(clusterById, cluster.id).length - 1,
+      ]),
+    );
+    root = clusters.find((cluster) => cluster.parentId === null) ?? null;
+    hubIds = new Set(clusters.map((cluster) => cluster.id));
+    weightOf = new Map(clusters.map((cluster) => [cluster.id, 0]));
+    for (const node of nodes) {
+      for (const cluster of groupPath(clusterById, node.clusterId)) {
+        weightOf.set(cluster.id, (weightOf.get(cluster.id) ?? 0) + 1);
+      }
+    }
+    territoryIndex = new Map(
+      clusters
+        .filter((cluster) => cluster.level === "project")
+        .sort((a, b) => a.name.localeCompare(b.name))
+        .map((cluster, index) => [cluster.id, index]),
+    );
+    generatedAt = Date.parse(data.generatedAt);
+    degreeOf = new Map(nodes.map((node) => [node.id, 0]));
+    citedByOf = new Map(nodes.map((node) => [node.id, 0]));
+    for (const edge of edges) {
+      degreeOf.set(edge.from, (degreeOf.get(edge.from) ?? 0) + 1);
+      degreeOf.set(edge.to, (degreeOf.get(edge.to) ?? 0) + 1);
+      if (edge.relation === "cites")
+        citedByOf.set(edge.to, (citedByOf.get(edge.to) ?? 0) + 1);
+    }
+    pendingOfCluster = new Map(
+      clusters.map((cluster) => [
+        cluster.id,
+        cluster.pendingNewDefinitions ?? 0,
+      ]),
+    );
+    for (const node of nodes) {
+      const pending = node.details?.pendingChanges ?? 0;
+      if (pending > 0)
+        pendingOfCluster.set(
+          node.clusterId,
+          (pendingOfCluster.get(node.clusterId) ?? 0) + pending,
+        );
+    }
+    engineNodes = [
+      ...clusters.map((cluster) => ({
+        id: cluster.id,
+        group: cluster.parentId,
+        hub: true,
+        kind: cluster.level,
+        depth: depthOf.get(cluster.id) ?? 0,
+        // A repository's owner is already the group it sits in, so its name is enough.
+        label:
+          cluster.level === "project" && cluster.name.includes("/")
+            ? cluster.name.slice(cluster.name.lastIndexOf("/") + 1)
+            : cluster.name,
+        r:
+          (HUB_RADIUS[cluster.level] ?? 9) +
+          Math.min(Math.sqrt(weightOf.get(cluster.id) ?? 0) * 0.35, 9),
+        weight: weightOf.get(cluster.id) ?? 0,
+        pending: pendingOfCluster.get(cluster.id) ?? 0,
+        card: {
+          kindLabel: legend.levels[cluster.level]?.label ?? cluster.level,
+          statusLabel: cluster.role ?? "",
+          lines: wrapTitle(cluster.name),
+          meta: `${weightOf.get(cluster.id) ?? 0} items`,
+          attention:
+            (pendingOfCluster.get(cluster.id) ?? 0) > 0
+              ? `${pendingOfCluster.get(cluster.id)} waiting`
+              : null,
+        },
+        glyph: hubGlyph(cluster),
+        activity: 0,
         color: "#888888",
+      })),
+      ...nodes.map((node) => {
+        const degree = degreeOf.get(node.id) ?? 0;
+        return {
+          id: node.id,
+          group: node.clusterId,
+          hub: false,
+          kind: node.kind,
+          memoryType: node.kind === "memory" ? node.details.type : null,
+          label: node.label,
+          r: (NODE_RADIUS[node.kind] ?? 6) + Math.min(degree, 12) * 0.32,
+          weight: degree,
+          labelAt: DEFINITION_KINDS.has(node.kind) ? 5 : 8,
+          glyph: glyphShape(
+            node.kind,
+            node.details.type,
+            node.kind === "source" ? node.details.reference : undefined,
+          ),
+          activity: activityOf(node),
+          badge: badgeOf(node),
+          retired: node.status === "retired",
+          card: cardOf(node),
+          color: "#888888",
+        };
+      }),
+    ];
+    engineNodeById = new Map(engineNodes.map((item) => [item.id, item]));
+    // A hub is as lively as the things inside it, and a parent as its liveliest child.
+    const activityIn = new Map();
+    for (const node of nodes) {
+      const entry = activityIn.get(node.clusterId) ?? { sum: 0, count: 0 };
+      entry.sum += engineNodeById.get(node.id)?.activity ?? 0;
+      entry.count += 1;
+      activityIn.set(node.clusterId, entry);
+    }
+    for (const cluster of [...clusters].sort(
+      (a, b) => (depthOf.get(b.id) ?? 0) - (depthOf.get(a.id) ?? 0),
+    )) {
+      const hub = engineNodeById.get(cluster.id);
+      const entry = activityIn.get(cluster.id);
+      if (entry)
+        hub.activity = Math.max(
+          hub.activity,
+          Math.min(1, (entry.sum / entry.count) * 1.5),
+        );
+      const parent = cluster.parentId
+        ? engineNodeById.get(cluster.parentId)
+        : null;
+      if (parent)
+        parent.activity = Math.max(parent.activity, hub.activity * 0.8);
+    }
+    // Several connections between the same two records fan out, so each stays visible and clickable.
+    const pairKey = (edge) =>
+      edge.from < edge.to
+        ? `${edge.from}|${edge.to}`
+        : `${edge.to}|${edge.from}`;
+    const pairTotal = new Map();
+    for (const edge of edges)
+      pairTotal.set(pairKey(edge), (pairTotal.get(pairKey(edge)) ?? 0) + 1);
+    const pairSeen = new Map();
+    const relationLinks = edges.map((edge) => {
+      const key = pairKey(edge);
+      const total = pairTotal.get(key) ?? 1;
+      const index = pairSeen.get(key) ?? 0;
+      pairSeen.set(key, index + 1);
+      return {
+        id: edge.id,
+        source: edge.from,
+        target: edge.to,
+        relation: edge.relation,
+        distance: LINK_DISTANCE[edge.relation] ?? 40,
+        strength: edge.relation === "owns" ? 0.08 : 0.7,
+        bend:
+          total > 1
+            ? (index - (total - 1) / 2) * 0.24 * (edge.from < edge.to ? 1 : -1)
+            : undefined,
       };
-    }),
-  ];
-  const engineNodeById = new Map(engineNodes.map((item) => [item.id, item]));
+    });
+    engineLinks = [
+      ...clusters
+        .filter((cluster) => cluster.parentId !== null)
+        .map((cluster) => ({
+          id: `hub:${cluster.id}`,
+          source: cluster.id,
+          target: cluster.parentId,
+          structure: true,
+          distance: 70 + Math.sqrt(weightOf.get(cluster.id) ?? 0) * 9,
+          strength: 0.5,
+        })),
+      ...nodes.map((node) => ({
+        id: `in:${node.id}`,
+        source: node.id,
+        target: node.clusterId,
+        structure: true,
+        distance: 26 + (NODE_RADIUS[node.kind] ?? 6) * 2,
+        strength: 0.16,
+      })),
+      ...relationLinks,
+    ];
+    // A quiet, stable sample of connections carries moving light when nothing is selected.
+    const ambientStep = Math.max(
+      1,
+      Math.ceil(engineLinks.length / AMBIENT_LIMIT),
+    );
+    ambientLinks = engineLinks.filter(
+      (link, index) => link.relation !== "owns" && index % ambientStep === 0,
+    );
+  }
   function paint() {
     const palette = PALETTE[engine.theme];
-    for (const item of engineNodes) item.color = colorOf(item, palette);
+    for (const item of engineNodes)
+      item.color = colorOf(item, palette, engine.theme);
   }
-  const relationLinks = edges.map((edge) => ({
-    id: edge.id,
-    source: edge.from,
-    target: edge.to,
-    relation: edge.relation,
-    distance: LINK_DISTANCE[edge.relation] ?? 40,
-    strength: edge.relation === "owns" ? 0.08 : 0.7,
-  }));
-  const engineLinks = [
-    ...clusters
-      .filter((cluster) => cluster.parentId !== null)
-      .map((cluster) => ({
-        id: `hub:${cluster.id}`,
-        source: cluster.id,
-        target: cluster.parentId,
-        structure: true,
-        distance:
-          70 + Math.sqrt(weightOf.get(cluster.id) ?? 0) * 9,
-        strength: 0.5,
-      })),
-    ...nodes.map((node) => ({
-      id: `in:${node.id}`,
-      source: node.id,
-      target: node.clusterId,
-      structure: true,
-      distance: 26 + (NODE_RADIUS[node.kind] ?? 6) * 2,
-      strength: 0.16,
-    })),
-    ...relationLinks,
-  ];
-  // A quiet, stable sample of connections carries moving light when nothing is selected.
-  const ambientStep = Math.max(1, Math.ceil(engineLinks.length / AMBIENT_LIMIT));
-  const ambientLinks = engineLinks.filter(
-    (link, index) => link.relation !== "owns" && index % ambientStep === 0,
-  );
+  deriveMap();
   paint();
   engine.resize();
   engine.setData({ nodes: engineNodes, links: engineLinks });
@@ -585,12 +844,19 @@ function start(data) {
     if (size.width < 900) return out;
     const frameBox = svg.getBoundingClientRect();
     const inspector = $("net-inspector");
-    if (inspector && !inspector.hidden && inspector.offsetWidth > 0) {
-      const box = inspector.getBoundingClientRect();
-      out.right = Math.max(0, frameBox.right - box.left);
+    // Read the panel's intended state, not its rectangle, which is mid-slide right after it opens.
+    if (
+      inspector &&
+      !inspector.hidden &&
+      inspector.offsetWidth > 0 &&
+      !inspector.classList.contains("collapsed") &&
+      getComputedStyle(inspector).position === "absolute"
+    ) {
+      out.right = inspector.offsetWidth + 12;
     }
     const top = $("net-topbar");
-    if (top) out.top = Math.max(0, top.getBoundingClientRect().bottom - frameBox.top);
+    if (top)
+      out.top = Math.max(0, top.getBoundingClientRect().bottom - frameBox.top);
     out.bottom = 36;
     return out;
   }
@@ -602,6 +868,32 @@ function start(data) {
       x: room.left + (size.width - room.left - room.right) / 2,
       y: room.top + (size.height - room.top - room.bottom) / 2,
     };
+  }
+
+  /** Where the floating panels sit over the map, in canvas pixels, so names stay out from under them. */
+  function hudRects() {
+    const frame = svg.getBoundingClientRect();
+    const rects = [];
+    for (const selector of [
+      ".net-head",
+      ".net-topbar",
+      ".net-legend-dock",
+      ".net-controls",
+      ".net-inspector:not(.collapsed)",
+    ]) {
+      const panel = app.querySelector(selector);
+      if (!panel || getComputedStyle(panel).position !== "absolute") continue;
+      const r = panel.getBoundingClientRect();
+      if (r.width === 0 || r.height === 0) continue;
+      rects.push({
+        x: r.left - frame.left,
+        y: r.top - frame.top,
+        w: r.width,
+        h: r.height,
+        priority: 0,
+      });
+    }
+    return rects;
   }
 
   function applyView() {
@@ -722,8 +1014,8 @@ function start(data) {
   }
   function drawMinimap() {
     if (!minimap) return;
-    const width = 168;
-    const height = 112;
+    const width = 136;
+    const height = 90;
     const ratio = Math.min(window.devicePixelRatio || 1, 2);
     minimap.width = width * ratio;
     minimap.height = height * ratio;
@@ -737,7 +1029,10 @@ function start(data) {
     const scale = Math.min(width, height) / (bounds.r * 2.15);
     const ox = width / 2 - bounds.x * scale;
     const oy = height / 2 - bounds.y * scale;
-    minimap.toWorld = (sx, sy) => ({ x: (sx - ox) / scale, y: (sy - oy) / scale });
+    minimap.toWorld = (sx, sy) => ({
+      x: (sx - ox) / scale,
+      y: (sy - oy) / scale,
+    });
     const shown = new Set(shownIds());
     engine.each((item, x, y) => {
       if (!shown.has(item.id)) return;
@@ -750,9 +1045,15 @@ function start(data) {
     const size = engine.size;
     const a = engine.toWorld(0, 0);
     const b = engine.toWorld(size.width, size.height);
-    g.strokeStyle = engine.theme === "dark" ? "rgb(255 255 255 / 0.7)" : "rgb(0 0 0 / 0.6)";
+    g.strokeStyle =
+      engine.theme === "dark" ? "rgb(255 255 255 / 0.7)" : "rgb(0 0 0 / 0.6)";
     g.lineWidth = 1;
-    g.strokeRect(a.x * scale + ox, a.y * scale + oy, (b.x - a.x) * scale, (b.y - a.y) * scale);
+    g.strokeRect(
+      a.x * scale + ox,
+      a.y * scale + oy,
+      (b.x - a.x) * scale,
+      (b.y - a.y) * scale,
+    );
   }
 
   let lastCamera = "";
@@ -776,7 +1077,6 @@ function start(data) {
     clearTimeout(whereTimer);
     whereTimer = window.setTimeout(updateWhere, 90);
   }
-
 
   // Filtering, focus, and highlight ------------------------------------------------------------
   function neighborhood(startId, depth, usable) {
@@ -806,7 +1106,8 @@ function start(data) {
           (node) =>
             !state.hideKinds.has(node.kind) &&
             (state.retired || node.status !== "retired") &&
-            (state.people || !PEOPLE_KINDS.has(node.kind)),
+            (state.people || !PEOPLE_KINDS.has(node.kind)) &&
+            (replay === null || bornAt(node) <= replay.until),
         )
         .map((node) => node.id),
     );
@@ -936,7 +1237,9 @@ function start(data) {
       }
     }
     const highlighting =
-      selected !== null || trace !== null || (hovered !== null && near.size > 0);
+      selected !== null ||
+      trace !== null ||
+      (hovered !== null && near.size > 0);
     // Hubs that hold something lit stay lit, so you can see where it sits.
     for (const id of [...near]) {
       const node = nodeById.get(id);
@@ -960,7 +1263,10 @@ function start(data) {
     if (state.isolate && selected) {
       shownHubs = new Set();
       for (const id of visible.nodes) {
-        for (const cluster of groupPath(clusterById, nodeById.get(id).clusterId))
+        for (const cluster of groupPath(
+          clusterById,
+          nodeById.get(id).clusterId,
+        ))
           shownHubs.add(cluster.id);
       }
       if (selected.type === "cluster") {
@@ -991,6 +1297,7 @@ function start(data) {
       labels: state.labels,
       ambient: state.flow ? ambientLinks : null,
       flow: new Set(activeLinks),
+      avoid: hudRects(),
     });
     updateStatus(mode);
     updateLegend();
@@ -999,6 +1306,10 @@ function start(data) {
 
   function updateStatus(mode) {
     if (!status) return;
+    if (replay !== null) {
+      status.textContent = `Replaying how this map grew · ${day(new Date(replay.until).toISOString())} · ${plural(visible.nodes.size, "item", "items")} · press R or Esc to stop`;
+      return;
+    }
     const filtered = nodes.length - visible.nodes.size;
     const parts = [
       `${plural(visible.nodes.size, "item", "items")}`,
@@ -1012,27 +1323,77 @@ function start(data) {
   }
 
   // Legend -----------------------------------------------------------------------------------------
-  /** A colour key under the memory kinds: one swatch per kind of thing drawn, with counts. */
+  /** The key: each repository cell's colour (choose one to go there), then the colours that never change meaning. */
   function renderKey() {
     const holder = $("net-key");
     if (!holder) return;
     const palette = PALETTE[engine.theme];
-    const counts = new Map();
-    for (const item of engineNodes) {
-      const key = item.hub ? item.kind : item.kind === "memory" ? item.memoryType : item.kind;
-      counts.set(key, (counts.get(key) ?? 0) + 1);
-    }
-    const label = (key) =>
-      legend.levels[key]?.label ??
-      legend.memoryTypes[key]?.label ??
-      legend.nodes[key]?.label ??
-      key;
     holder.replaceChildren();
-    for (const [key, count] of [...counts].sort((a, b) => b[1] - a[1])) {
-      const li = element("li", { title: label(key) });
-      const dot = element("span", { class: "net-key-dot", "aria-hidden": "true" });
-      dot.style.setProperty("--dot", palette[key] ?? palette.memory);
-      li.append(dot, element("span", {}, label(key)), element("small", {}, String(count)));
+    const cells = clusters
+      .filter((cluster) => territoryIndex.has(cluster.id))
+      .sort(
+        (a, b) =>
+          (weightOf.get(b.id) ?? 0) - (weightOf.get(a.id) ?? 0) ||
+          a.name.localeCompare(b.name),
+      );
+    for (const cluster of cells) {
+      const button = element("button", {
+        type: "button",
+        title: `Go to ${cluster.name}`,
+      });
+      const dot = element("span", {
+        class: "net-key-dot",
+        "aria-hidden": "true",
+      });
+      dot.style.setProperty("--dot", territoryHue(cluster.id, engine.theme));
+      button.append(
+        dot,
+        element(
+          "span",
+          {},
+          engineNodeById.get(cluster.id)?.label ?? cluster.name,
+        ),
+        element("small", {}, String(weightOf.get(cluster.id) ?? 0)),
+      );
+      button.addEventListener("click", () =>
+        select("cluster", cluster.id, { center: true }),
+      );
+      const li = element("li");
+      li.append(button);
+      holder.append(li);
+    }
+    const always = [
+      [
+        "person",
+        "People",
+        nodes.filter((node) => node.kind === "person").length,
+      ],
+      [
+        "agent_account",
+        "Agent accounts",
+        nodes.filter((node) => node.kind === "agent_account").length,
+      ],
+      [
+        "incident",
+        "Incidents",
+        nodes.filter(
+          (node) => node.kind === "memory" && node.details?.type === "incident",
+        ).length,
+      ],
+    ];
+    for (const [key, text, count] of always) {
+      if (count === 0) continue;
+      const li = element("li", { title: text });
+      const dot = element("span", {
+        class: "net-key-dot",
+        "aria-hidden": "true",
+      });
+      dot.style.setProperty("--dot", palette[key]);
+      li.append(
+        dot,
+        element("span", {}, text),
+        element("small", {}, String(count)),
+      );
       holder.append(li);
     }
   }
@@ -1042,7 +1403,6 @@ function start(data) {
     attributes: true,
     attributeFilter: ["data-theme"],
   });
-
 
   function tierOn(tier) {
     if (tier === "people") return state.people;
@@ -1119,7 +1479,8 @@ function start(data) {
     let best = root?.id ?? null;
     let bestDepth = -1;
     for (const cluster of clusters) {
-      const shape = engine.groupShape(cluster.id) ?? engine.position(cluster.id);
+      const shape =
+        engine.groupShape(cluster.id) ?? engine.position(cluster.id);
       if (!shape) continue;
       const r = shape.r ?? 40;
       if (Math.hypot(center.x - shape.x, center.y - shape.y) > r) continue;
@@ -1211,6 +1572,19 @@ function start(data) {
     syncControls();
   }
 
+  // The details panel opens with a selection and steps aside without one, unless opened by hand.
+  let inspectorKept = false;
+  function syncInspector() {
+    const inspector = $("net-inspector");
+    if (!inspector) return;
+    const open = selected !== null || inspectorKept;
+    inspector.classList.toggle("collapsed", !open);
+    $("net-inspector-toggle")?.setAttribute(
+      "aria-expanded",
+      open ? "true" : "false",
+    );
+  }
+
   function select(type, id, options = {}) {
     const previous = selected;
     if (type === "list" || type === "stream") {
@@ -1229,6 +1603,7 @@ function start(data) {
       trace = null;
       if (selected?.type !== "node") state.impact = false;
     }
+    syncInspector();
     if (selected?.type === "node") reveal(selected.id);
     refresh();
     renderDetails();
@@ -1323,6 +1698,7 @@ function start(data) {
             : " (hidden by your choices)",
         ),
       );
+    button.title = node.label;
     button.addEventListener("click", () =>
       select("node", id, { center: true }),
     );
@@ -1336,6 +1712,7 @@ function start(data) {
       icon("group"),
       document.createTextNode(cluster?.name ?? "Unknown"),
     );
+    button.title = cluster?.name ?? "Unknown";
     button.addEventListener("click", () =>
       select("cluster", id, { center: true }),
     );
@@ -1534,6 +1911,112 @@ function start(data) {
       const prompt = pageLink(`${node.href}/prompt`, "Prompt anatomy");
       if (prompt) holder.append(prompt);
     }
+    const copy = element(
+      "button",
+      { type: "button", title: "Copy a link to this view" },
+      "Copy view link",
+    );
+    copy.addEventListener("click", async () => {
+      const url = `${location.origin}${location.pathname}?${encodeViewState(state)}`;
+      try {
+        await navigator.clipboard.writeText(url);
+      } catch {
+        /* clipboard unavailable */
+      }
+    });
+    holder.append(copy);
+    // Direct governed actions: the same POST flows (and CSRF) as the record pages.
+    const acts = node.actions ?? {};
+    const governedForm = (action, revisionName, revision, label) => {
+      const form = element("form", {
+        method: "post",
+        action,
+        class: "net-governed-form",
+      });
+      const csrf = element("input", {
+        type: "hidden",
+        name: "_csrf",
+        value: data.csrf ?? "",
+      });
+      form.append(csrf);
+      if (revisionName)
+        form.append(
+          element("input", {
+            type: "hidden",
+            name: revisionName,
+            value: String(revision ?? ""),
+          }),
+        );
+      const reason = element("input", {
+        name: "reason",
+        required: "",
+        maxlength: "500",
+        "aria-label": `Reason for: ${label}`,
+        placeholder: "Reason",
+      });
+      const submit = element("button", { type: "submit" }, label);
+      form.append(reason, submit);
+      return form;
+    };
+    const forms = [];
+    if (node.kind === "memory") {
+      if (acts.suspend)
+        forms.push(
+          governedForm(
+            `/memories/${node.recordId}/suspend`,
+            "expectedRevision",
+            node.details.revision,
+            "Suspend",
+          ),
+        );
+      if (acts.reinstate)
+        forms.push(
+          governedForm(
+            `/memories/${node.recordId}/reinstate`,
+            "expectedRevision",
+            node.details.revision,
+            "Reinstate",
+          ),
+        );
+      if (acts.revoke)
+        forms.push(
+          governedForm(
+            `/memories/${node.recordId}/revoke`,
+            "expectedRevision",
+            node.details.revision,
+            "Revoke approval",
+          ),
+        );
+      if (acts.report)
+        forms.push(
+          governedForm(
+            `/memories/${node.recordId}/report`,
+            null,
+            null,
+            "Report as outdated",
+          ),
+        );
+    }
+    if (acts.retire)
+      forms.push(
+        governedForm(
+          `/definitions/${node.recordId}/retire`,
+          "baseRevision",
+          node.details.revision,
+          "Propose retiring",
+        ),
+      );
+    if (forms.length > 0) {
+      const wrap = element("div", { class: "net-governed" });
+      wrap.append(
+        paragraph(
+          "Direct actions use the same reviewed flow as the record page.",
+          "hint",
+        ),
+        ...forms,
+      );
+      holder.append(wrap);
+    }
     return holder;
   }
 
@@ -1581,9 +2064,9 @@ function start(data) {
     }
     const parts = [];
     for (const path of trace.paths) {
-      const chain = element("ol", { class: "net-path-chain" });
+      const chain = element("ol", { class: "net-path-chain ledger" });
       path.forEach((id, index) => {
-        const li = element("li");
+        const li = element("li", { class: "ledger-row" });
         li.append(nodeButton(id));
         const next = path[index + 1];
         if (next) {
@@ -1874,10 +2357,42 @@ function start(data) {
       facts([["Stored in", edge.table]]),
     );
     why.setAttribute("data-why", "");
+    const edgeActions = element("div", { class: "net-actions" });
+    const traceButton = element(
+      "button",
+      { type: "button" },
+      "Trace where this came from",
+    );
+    traceButton.addEventListener("click", () => {
+      select("node", edge.from, { center: true });
+      showProvenance(edge.from);
+    });
+    const impactButton = element(
+      "button",
+      { type: "button" },
+      "What depends on the target",
+    );
+    impactButton.addEventListener("click", () => {
+      select("node", edge.to, { center: true });
+      toggleImpact();
+    });
+    const hideButton = element(
+      "button",
+      { type: "button" },
+      `Hide ${info.label} connections`,
+    );
+    hideButton.addEventListener("click", () => {
+      state.hideRelations.add(edge.relation);
+      refresh();
+      renderDetails();
+      pushHistory(true);
+    });
+    edgeActions.append(traceButton, impactButton, hideButton);
     return [
       header("connection", `Connection: ${info.label}`),
       line,
       paragraph(info.meaning, "hint"),
+      section("Actions", edgeActions),
       why,
     ];
   }
@@ -2022,7 +2537,11 @@ function start(data) {
     const ul = element("ul", { class: "plain" });
     for (const id of chosen.ids ?? []) {
       const li = element("li");
-      li.append(nodeButton(id));
+      li.append(
+        !nodeById.has(id) && clusterById.has(id)
+          ? clusterButton(id)
+          : nodeButton(id),
+      );
       ul.append(li);
     }
     if ((chosen.ids ?? []).length > 0) parts.push(section("On the map", ul));
@@ -2059,16 +2578,49 @@ function start(data) {
     return strip;
   }
 
-  function listButton(text, key, ids, note) {
-    const button = element(
-      "button",
-      { type: "button", class: "net-link" },
-      text,
-    );
-    button.addEventListener("click", () =>
-      select("list", key, { ids, title: text, note }),
-    );
-    return button;
+  /** What each figure in the registry stands for, so choosing it lists exactly those records. */
+  function registryList(key) {
+    const registry = brainRegistry(nodes, clusters);
+    if (key.startsWith("tier-")) {
+      const tier = key.slice(5);
+      const entry = registry.tiers[tier];
+      if (!entry || !TIER_INFO[tier]) return null;
+      return {
+        ids: entry.ids,
+        title: `${TIER_INFO[tier].label}: ${plural(entry.count, "item", "items")}`,
+      };
+    }
+    const words = {
+      ready: [
+        "approved, current record",
+        "approved, current records",
+        "Only approved, current guidance and knowledge. Nothing waiting for review and nothing retired is included.",
+      ],
+      pending: ["change waiting for review", "changes waiting for review"],
+      warnings: ["definition needs a look", "definitions need a look"],
+      flagged: [
+        "flagged item",
+        "flagged items",
+        "Possible personal data, or a secret was removed before storing.",
+      ],
+      retired: [
+        "retired definition (history only)",
+        "retired definitions (history only)",
+        "Kept for history. Nothing should rely on them, and AI tools never get them.",
+      ],
+    }[key];
+    const entry = registry[key];
+    if (!words || !entry) return null;
+    return {
+      ids: entry.ids,
+      title: plural(entry.count, words[0], words[1]),
+      note: words[2],
+    };
+  }
+
+  function showList(key) {
+    const list = registryList(key);
+    if (list) select("list", key, list);
   }
 
   /** The brain registry: what is in the brain, what AI tools would get, and what needs a person. */
@@ -2077,104 +2629,111 @@ function start(data) {
     const parts = [
       element("h2", {}, "Brain registry"),
       paragraph(
-        `What ${data.organization.name} knows and how it works, as far as you may see. Select anything on the map to see why it exists, what depends on it, who owns it, and where it came from.`,
+        `What ${data.organization.name} knows and how it works, as far as you may see. Choose anything on the map to see why it exists, what depends on it, and who owns it.`,
         "hint",
       ),
     ];
-    const grid = element("div", { class: "net-registry" });
+
+    const tiles = element("ul", {
+      class: "net-reg-tiles",
+      "aria-label": "In the brain",
+    });
     for (const tier of TIER_ORDER) {
       const info = TIER_INFO[tier];
       const entry = registry.tiers[tier];
       const tile = element("button", {
         type: "button",
         class: `net-reg-tile tier-${tier}`,
+        title: `Show ${info.detail} on the map`,
       });
+      const name = element("span", { class: "net-reg-name" });
+      name.append(icon(info.icon), element("span", {}, info.label));
       tile.append(
-        icon(info.icon),
+        name,
         element("span", { class: "net-reg-count" }, String(entry.count)),
-        element("span", { class: "net-reg-label" }, info.label),
-        element("small", {}, info.detail),
+        element("span", { class: "net-reg-detail" }, info.detail),
       );
       tile.disabled = entry.count === 0;
       tile.addEventListener("click", () => {
         if (tier === "people" && !state.people) setPeople(true);
         else if (!tierOn(tier)) toggleTier(tier);
-        select("list", `tier-${tier}`, {
-          ids: entry.ids,
-          title: `${info.label}: ${plural(entry.count, "item", "items")}`,
-        });
+        showList(`tier-${tier}`);
       });
-      grid.append(tile);
+      const li = element("li");
+      li.append(tile);
+      tiles.append(li);
     }
-    parts.push(grid);
-    const ready = element("p", { class: "net-reg-ready" });
-    ready.append(
-      listButton(
-        plural(
-          registry.ready.count,
-          "approved, current record",
-          "approved, current records",
-        ),
-        "ready",
-        registry.ready.ids,
-        "Only approved, current guidance and knowledge. Nothing waiting for review and nothing retired is included.",
+    parts.push(section("In the brain", tiles));
+
+    const guidance =
+      registry.tiers.procedural.count + registry.tiers.semantic.count;
+    const share =
+      guidance === 0 ? 0 : Math.round((registry.ready.count / guidance) * 100);
+    const ready = element("div", { class: "net-reg-ready" });
+    const figures = element("p", { class: "net-reg-figures" });
+    figures.append(
+      element(
+        "span",
+        { class: "net-reg-figure" },
+        String(registry.ready.count),
+      ),
+      element("span", { class: "net-reg-of" }, `of ${guidance}`),
+      element(
+        "span",
+        { class: "net-reg-what" },
+        "guidance and knowledge records are approved and current",
       ),
     );
+    const meter = element("div", {
+      class: "net-reg-meter",
+      role: "img",
+      "aria-label": `${registry.ready.count} of ${guidance} ready for AI tools`,
+    });
+    const fill = element("span");
+    fill.style.setProperty("--share", `${share}%`);
+    meter.append(fill);
+    const show = element(
+      "button",
+      { type: "button", class: "secondary net-reg-show" },
+      "Show what AI tools get",
+    );
+    show.disabled = registry.ready.count === 0;
+    show.addEventListener("click", () => showList("ready"));
+    ready.append(figures, meter, show);
     parts.push(
       section(
         "Ready for AI tools",
         ready,
         paragraph(
-          "This is what MemoryNet would give AI tools once they connect. Proposals waiting for review and retired records are never included.",
+          "Proposals waiting for review and retired records are never given to AI tools.",
           "hint",
         ),
       ),
     );
-    const needs = element("ul", { class: "plain" });
-    const add = (count, text, key, ids, note) => {
+
+    const needs = element("ul", { class: "net-reg-rows" });
+    const need = (key, tone, text) => {
+      const count = registry[key].count;
       if (count === 0) return;
+      const button = element("button", {
+        type: "button",
+        class: "net-reg-row",
+        "data-tone": tone,
+      });
+      button.append(
+        element("span", { class: "net-reg-dot", "aria-hidden": "true" }),
+        element("span", { class: "net-reg-row-label" }, text),
+        element("span", { class: "net-reg-row-count" }, String(count)),
+      );
+      button.addEventListener("click", () => showList(key));
       const li = element("li");
-      li.append(listButton(text, key, ids, note));
+      li.append(button);
       needs.append(li);
     };
-    add(
-      registry.pending.count,
-      plural(
-        registry.pending.count,
-        "change waiting for review",
-        "changes waiting for review",
-      ),
-      "pending",
-      registry.pending.ids,
-    );
-    add(
-      registry.warnings.count,
-      plural(
-        registry.warnings.count,
-        "definition needs a look",
-        "definitions need a look",
-      ),
-      "warnings",
-      registry.warnings.ids,
-    );
-    add(
-      registry.flagged.count,
-      plural(registry.flagged.count, "flagged item", "flagged items"),
-      "flagged",
-      registry.flagged.ids,
-      "Possible personal data, or a secret was removed before storing.",
-    );
-    add(
-      registry.retired.count,
-      plural(
-        registry.retired.count,
-        "retired definition (history only)",
-        "retired definitions (history only)",
-      ),
-      "retired",
-      registry.retired.ids,
-      "Kept for history. Nothing should rely on them, and AI tools never get them.",
-    );
+    need("pending", "pending", "Waiting for review");
+    need("warnings", "warning", "Definitions that need a look");
+    need("flagged", "flagged", "Flagged items");
+    need("retired", "retired", "Retired definitions, kept as history");
     parts.push(
       section(
         "Needs a person",
@@ -2183,32 +2742,65 @@ function start(data) {
           : paragraph("Nothing you can see needs attention.", "empty"),
       ),
     );
+
     const recent = events.slice(0, 5);
     if (recent.length > 0) {
-      const ul = element("ul", { class: "plain" });
+      const changes = element("ol", { class: "net-reg-changes" });
       for (const event of recent) {
-        const li = element("li");
-        li.append(
-          nodeButton(event.id),
-          element("small", {}, ` ${event.what} ${day(event.at)}`),
+        const node = nodeById.get(event.id);
+        if (!node) continue;
+        const hidden = !visible.nodes.has(event.id);
+        const button = element("button", {
+          type: "button",
+          class: `net-reg-change${hidden ? " is-hidden" : ""}`,
+          title: hidden ? `${node.label} (hidden by your choices)` : node.label,
+        });
+        button.append(
+          icon(
+            node.status === "retired" ? "retired" : node.kind,
+            node.details.type,
+          ),
+          element("span", { class: "net-reg-change-name" }, node.label),
+          element(
+            "time",
+            { datetime: event.at },
+            `${event.what} ${day(event.at)}`,
+          ),
         );
-        ul.append(li);
+        button.addEventListener("click", () =>
+          select("node", event.id, { center: true }),
+        );
+        const li = element("li");
+        li.append(button);
+        changes.append(li);
       }
-      parts.push(section("Latest changes", ul));
+      const replayButton = element(
+        "button",
+        { type: "button", class: "secondary net-reg-show" },
+        replay !== null ? "Stop the replay" : "Replay how this map grew",
+      );
+      replayButton.hidden = reduceMotion;
+      replayButton.title = "Records appear in the order they were made (R)";
+      replayButton.addEventListener("click", startReplay);
+      parts.push(section("Latest changes", changes, replayButton));
     }
-    parts.push(
-      section(
-        "How to read the map",
-        list(
-          [
-            "Big glowing spheres are hubs: the organization in the middle, its business units, and their projects. Everything a team keeps gathers around its hub.",
-            "Colour says what a thing is: memories by type (decision, lesson, constraint, incident…), evidence in teal, rules, instructions, skills, and agents in their own colours. The key is at the bottom left.",
-            "Point at anything to preview its connections; click to light its path to the core. Drag to move the map, scroll to zoom, or press ⌘K to find something.",
-            "Turn on People to see owners and agent accounts on the map.",
-          ],
-          "",
-        ),
+
+    const guide = element("details", { class: "net-reg-guide" });
+    guide.append(
+      element("summary", {}, "How to read the map"),
+      list(
+        [
+          "Each project or repository is a tinted cell, with its hub inside and everything the team keeps around it. The tint only tells cells apart.",
+          "Every dot is one record, and its sign says what it is: a decision, a rule, a skill, a pull request, a commit. More connections make a bigger dot.",
+          "Lines say how records relate: dotted blue cites evidence, dotted amber owns, dashed runs as, solid uses, follows or is based on. Light moving along a line is recent activity.",
+          "A dot on a record's rim means it needs someone: amber is waiting for review, red is a warning. A blue ring means it changed while the map was open.",
+          "Point at anything to see its connections, choose it to open it here, drag to move, scroll to zoom, or press ⌘K to find something. Turn on People to see owners.",
+        ],
+        "",
       ),
+    );
+    parts.push(
+      guide,
       section(
         "This picture",
         facts([
@@ -2217,7 +2809,7 @@ function start(data) {
             "You are",
             `${data.viewer.displayName} (${data.viewer.kind === "agent" ? "agent" : "person"})`,
           ],
-          ["Snapshot", formatDate(data.generatedAt)],
+          ["Records as of", formatDate(data.generatedAt)],
           [
             "Contains",
             `${plural(clusters.length, "group", "groups")}, ${plural(nodes.length, "item", "items")}, ${plural(edges.length, "connection", "connections")}`,
@@ -2418,6 +3010,7 @@ function start(data) {
   const tabs = [...document.querySelectorAll(".net-modes [role=tab]")];
   function setMode(mode, options = {}) {
     if (!MODES.includes(mode)) return;
+    if (mode !== "network") stopReplay();
     state.mode = mode;
     for (const tab of tabs) {
       const on = tab.getAttribute("data-mode") === mode;
@@ -2428,6 +3021,7 @@ function start(data) {
     }
     renderPanels();
     updateMinimap();
+    engine.setMotion(mode === "network");
     if (mode === "network") scheduleLabels();
     saveWorkspace();
     if (options.history !== false) pushHistory(options.history === "replace");
@@ -2515,7 +3109,7 @@ function start(data) {
         ),
       );
     } else {
-      const ol = element("ol", { class: "net-timeline" });
+      const ol = element("ol", { class: "net-timeline ledger" });
       for (const group of eventsByDay(shown)) {
         const li = element("li");
         li.append(element("time", { datetime: group.day }, group.day));
@@ -2523,7 +3117,7 @@ function start(data) {
         for (const event of group.events) {
           const row = element("li", {
             "data-event": event.id,
-            class: `tier-${tierOf(nodeById.get(event.id)?.kind ?? "memory")}`,
+            class: `ledger-row tier-${tierOf(nodeById.get(event.id)?.kind ?? "memory")}`,
           });
           if (selected?.type === "node" && selected.id === event.id)
             row.classList.add("selected");
@@ -2792,8 +3386,11 @@ function start(data) {
 
   function urlFor(query) {
     const params = new URLSearchParams(query);
-    const evidence = new URLSearchParams(window.location.search).get("evidence");
-    if (evidence === "all" || evidence === "cited") params.set("evidence", evidence);
+    const evidence = new URLSearchParams(window.location.search).get(
+      "evidence",
+    );
+    if (evidence === "all" || evidence === "cited")
+      params.set("evidence", evidence);
     const encoded = params.toString();
     return `${window.location.pathname}${encoded === "" ? "" : `?${encoded}`}`;
   }
@@ -2853,6 +3450,7 @@ function start(data) {
         : null;
     trace = null;
     state.impact = next.impact && selected?.type === "node";
+    syncInspector();
     if (selected?.type === "node") reveal(selected.id);
     setMode(next.mode, { history: false });
     refresh();
@@ -2870,6 +3468,8 @@ function start(data) {
       const place = nodePlace(selected.id);
       if (place) centerOn(place.x, place.y, 0.9, animate);
     } else if (selected?.type === "cluster") {
+      // A focused group keeps its framing when the canvas first reports its size.
+      userMoved = true;
       frameGroup(selected.id, animate);
     } else {
       userMoved = false;
@@ -2996,8 +3596,7 @@ function start(data) {
     )
       state.shade = saved.shade;
     if (typeof saved.labels === "boolean") state.labels = saved.labels;
-    if (typeof saved.flow === "boolean")
-      state.flow = saved.flow;
+    if (typeof saved.flow === "boolean") state.flow = saved.flow;
     if (Array.isArray(saved.closed))
       state.closed = new Set(saved.closed.filter((id) => clusterById.has(id)));
     const filters = withFilters
@@ -3152,22 +3751,88 @@ function start(data) {
   $("net-back")?.addEventListener("click", () => window.history.back());
   $("net-forward")?.addEventListener("click", () => window.history.forward());
 
-  document
-    .querySelectorAll(".net-attention [data-attention]")
-    .forEach((chip) => {
-      const key = chip.getAttribute("data-attention");
-      const entry = brainRegistry(nodes, clusters)[key];
-      if (!entry) return;
-      const button = element(
-        "button",
-        { type: "button", "data-tone": chip.getAttribute("data-tone") },
-        chip.textContent.trim(),
+  /** The name card's counts and what needs someone, kept in step with the records drawn. */
+  function renderHead() {
+    const registry = brainRegistry(nodes, clusters);
+    const sub = document.querySelector(".net-sub");
+    if (sub)
+      sub.replaceChildren(
+        element("strong", {}, String(nodes.length)),
+        " items · ",
+        element("strong", {}, String(edges.length)),
+        " connections · ",
+        element("strong", {}, String(clusters.length)),
+        " groups",
       );
-      button.addEventListener("click", () =>
-        select("list", key, { ids: entry.ids, title: chip.textContent.trim() }),
+    const holder = document.querySelector(".net-attention");
+    if (holder) {
+      const chips = [];
+      const chip = (key, tone, text, title) => {
+        if (registry[key].count === 0) return;
+        const button = element(
+          "button",
+          { type: "button", "data-tone": tone, title },
+          text,
+        );
+        button.addEventListener("click", () => showList(key));
+        const li = element("li");
+        li.append(button);
+        chips.push(li);
+      };
+      chip(
+        "pending",
+        "pending",
+        plural(
+          registry.pending.count,
+          "change waiting for review",
+          "changes waiting for review",
+        ),
       );
-      chip.replaceWith(button);
+      chip(
+        "warnings",
+        "warning",
+        plural(registry.warnings.count, "needs a look", "need a look"),
+      );
+      chip(
+        "flagged",
+        "flagged",
+        plural(registry.flagged.count, "flagged item", "flagged items"),
+        "Possible personal data, or a secret was removed",
+      );
+      if (chips.length === 0) {
+        const li = element("li");
+        li.append(
+          element(
+            "span",
+            { "data-tone": "current" },
+            "Nothing here needs attention",
+          ),
+        );
+        chips.push(li);
+      }
+      holder.replaceChildren(...chips);
+    }
+    document.querySelectorAll("#net-legend [data-tier]").forEach((button) => {
+      const count = button.querySelector(".net-count");
+      const entry = registry.tiers[button.getAttribute("data-tier")];
+      if (count && entry) count.textContent = String(entry.count);
     });
+    document.querySelectorAll("input[data-kind]").forEach((box) => {
+      const count = box.parentElement?.querySelector(".net-count");
+      const kind = box.getAttribute("data-kind");
+      if (count)
+        count.textContent = String(
+          nodes.filter((node) => node.kind === kind).length,
+        );
+    });
+    const retired =
+      $("net-retired")?.parentElement?.querySelector(".net-count");
+    if (retired)
+      retired.textContent = String(
+        nodes.filter((node) => node.status === "retired").length,
+      );
+  }
+  renderHead();
 
   // Pointer input -----------------------------------------------------------------------------------
   function localPoint(event) {
@@ -3225,7 +3890,13 @@ function start(data) {
         grab: { x: world.x - place.x, y: world.y - place.y },
       };
     } else {
-      gesture = { mode: "pan", target, start: origin, last: origin, moved: false };
+      gesture = {
+        mode: "pan",
+        target,
+        start: origin,
+        last: origin,
+        moved: false,
+      };
     }
     svg.classList.add("dragging");
   });
@@ -3259,13 +3930,20 @@ function start(data) {
     if (!gesture.moved) return;
     userMoved = true;
     if (gesture.mode === "pan") {
-      engine.panBy(event.clientX - gesture.last.x, event.clientY - gesture.last.y);
+      engine.panBy(
+        event.clientX - gesture.last.x,
+        event.clientY - gesture.last.y,
+      );
       gesture.last = { x: event.clientX, y: event.clientY };
     } else if (gesture.mode === "node") {
       // Dragging only tidies the picture; it never changes a record. Let go and it settles back.
       const point = localPoint(event);
       const world = engine.toWorld(point.x, point.y);
-      engine.pin(gesture.target.id, world.x - gesture.grab.x, world.y - gesture.grab.y);
+      engine.pin(
+        gesture.target.id,
+        world.x - gesture.grab.x,
+        world.y - gesture.grab.y,
+      );
     }
   });
 
@@ -3277,9 +3955,20 @@ function start(data) {
       gesture = null;
       svg.classList.remove("dragging");
     }
-    if (finished.mode === "node" && finished.moved) engine.release(finished.target.id);
-    if (finished.mode !== "pinch" && !finished.moved && event.type === "pointerup") {
+    if (finished.mode === "node" && finished.moved)
+      engine.release(finished.target.id);
+    if (
+      finished.mode !== "pinch" &&
+      !finished.moved &&
+      event.type === "pointerup"
+    ) {
       chooseTarget(finished.target);
+    }
+    // A live change that arrived mid-drag lands once the hand is off the map.
+    if (!gesture && liveHeld) {
+      const next = liveHeld;
+      liveHeld = null;
+      receive(next);
     }
   }
   svg.addEventListener("pointerup", endGesture);
@@ -3304,7 +3993,9 @@ function start(data) {
       userMoved = true;
       frameGroup(target.id);
     } else if (target?.type === "node") {
-      zoomToSelection();
+      const node = nodeById.get(target.id);
+      if (node?.href) location.href = node.href;
+      else zoomToSelection();
     }
   });
 
@@ -3343,7 +4034,11 @@ function start(data) {
     setHovered(null);
     if (target?.type === "cluster") {
       svg.style.cursor = "pointer";
-      showTooltip(event, clusterById.get(target.id).name, clusterLines(target.id));
+      showTooltip(
+        event,
+        clusterById.get(target.id).name,
+        clusterLines(target.id),
+      );
       return;
     }
     hideTooltip();
@@ -3378,7 +4073,12 @@ function start(data) {
         const place = nodePlace(next);
         const screen = engine.toScreen(place.x, place.y);
         const size = engine.size;
-        if (screen.x < 60 || screen.y < 60 || screen.x > size.width - 60 || screen.y > size.height - 60)
+        if (
+          screen.x < 60 ||
+          screen.y < 60 ||
+          screen.x > size.width - 60 ||
+          screen.y > size.height - 60
+        )
           centerOn(place.x, place.y, view.k);
       }
       return;
@@ -3400,7 +4100,6 @@ function start(data) {
       engine.panBy(pan[0], pan[1]);
     }
   });
-
 
   function typingIn(target) {
     return (
@@ -3427,6 +4126,7 @@ function start(data) {
         return;
       }
       if (typing) return;
+      if (replay !== null) return stopReplay();
       if (trace || state.impact) {
         trace = null;
         state.impact = false;
@@ -3464,6 +4164,8 @@ function start(data) {
       if (selected?.type === "node") togglePin(selected.id);
     } else if (key === "h" || key === "H") {
       setPeople(!state.people);
+    } else if (key === "r" || key === "R") {
+      startReplay();
     } else if (key === "z" || key === "Z") {
       zoomToSelection();
     } else if (key === "0") {
@@ -3506,6 +4208,18 @@ function start(data) {
         label: "Fit everything",
         run: () => ((userMoved = false), fitAll()),
       },
+      ...(reduceMotion
+        ? []
+        : [
+            {
+              id: "replay",
+              label:
+                replay !== null
+                  ? "Stop the replay"
+                  : "Replay how this map grew",
+              run: startReplay,
+            },
+          ]),
       {
         id: "people",
         label: state.people
@@ -3522,9 +4236,7 @@ function start(data) {
       },
       {
         id: "edge-labels",
-        label: state.flow
-          ? "Hide connection labels"
-          : "Show connection labels",
+        label: state.flow ? "Hide connection labels" : "Show connection labels",
         run: () => {
           state.flow = !state.flow;
           syncControls();
@@ -3567,6 +4279,14 @@ function start(data) {
         run: () => themeButton("system")?.click(),
       },
     ];
+    if (document.fullscreenEnabled)
+      list.push({
+        id: "full",
+        label: document.fullscreenElement
+          ? "Leave full screen"
+          : "Show the map full screen",
+        run: toggleFull,
+      });
     if (selected?.type === "node") {
       const node = nodeById.get(selected.id);
       list.unshift(
@@ -3759,6 +4479,290 @@ function start(data) {
     }
   });
 
+  // Live: the open map keeps up with the records -----------------------------------------------------
+  const LIVE_MS = 15000;
+  const liveLine = $("net-live");
+  const liveText = $("net-live-text");
+  const liveUrl = `/orgs/${encodeURIComponent(data.organization.id)}/network/live${
+    new URLSearchParams(window.location.search).get("evidence") === "all"
+      ? "?evidence=all"
+      : ""
+  }`;
+  let liveTag = typeof data.version === "string" ? `"${data.version}"` : null;
+  let liveTimer = 0;
+  let liveFailures = 0;
+  let liveStopped = liveTag === null || typeof fetch !== "function";
+  let liveHeld = null;
+  let lastChange = null;
+  let liveShown = "";
+
+  function setLive(mode) {
+    if (!liveLine || !liveText) return;
+    // Rebuilt only when it says something new, so a focused button keeps its focus.
+    const key = `${mode}|${lastChange?.seq ?? 0}`;
+    if (key === liveShown) return;
+    liveShown = key;
+    liveLine.dataset.state = mode;
+    if (mode === "stopped") {
+      liveText.replaceChildren(
+        "Not live · ",
+        element(
+          "a",
+          { href: `${window.location.pathname}${window.location.search}` },
+          "reload to update",
+        ),
+      );
+    } else if (mode === "retrying") {
+      liveText.textContent = "Reconnecting…";
+    } else if (!lastChange) {
+      liveText.textContent = "Live · only what you may see";
+    } else {
+      const shown = lastChange;
+      const button = element(
+        "button",
+        {
+          type: "button",
+          class: "net-live-change",
+          title: "Show what changed",
+        },
+        `${shown.text} at ${shown.time}`,
+      );
+      button.addEventListener("click", () =>
+        select("list", "live", {
+          ids: shown.ids.filter(
+            (id) => nodeById.has(id) || clusterById.has(id),
+          ),
+          title: "Changed while the map was open",
+          note: `${shown.text} at ${shown.time}. A blue ring marks each one for a few seconds after it changes.`,
+        }),
+      );
+      liveText.replaceChildren("Live · ", button);
+    }
+  }
+
+  function scheduleLive(delay = LIVE_MS) {
+    window.clearTimeout(liveTimer);
+    if (!liveStopped) liveTimer = window.setTimeout(checkLive, delay);
+  }
+
+  async function checkLive() {
+    if (liveStopped || document.hidden) return;
+    let response = null;
+    try {
+      response = await fetch(liveUrl, {
+        headers: liveTag ? { "If-None-Match": liveTag } : {},
+        credentials: "same-origin",
+        cache: "no-store",
+        redirect: "manual",
+      });
+    } catch {
+      response = null;
+    }
+    if (response && (response.status === 304 || response.status === 200)) {
+      liveFailures = 0;
+      const tag = response.headers.get("ETag");
+      if (response.status === 200 && tag !== liveTag) {
+        const next = await response.json().catch(() => null);
+        if (next && Array.isArray(next.nodes) && Array.isArray(next.clusters)) {
+          liveTag = tag;
+          receive(next);
+        }
+      }
+      setLive("live");
+      scheduleLive();
+      return;
+    }
+    // Signed out, access gone or the organization removed: stop rather than ask forever.
+    if (
+      response &&
+      (response.type === "opaqueredirect" ||
+        (response.status >= 400 && response.status < 500))
+    ) {
+      liveStopped = true;
+      setLive("stopped");
+      return;
+    }
+    liveFailures += 1;
+    setLive("retrying");
+    scheduleLive(Math.min(LIVE_MS * 2 ** liveFailures, 120000));
+  }
+
+  /** Swaps in newer records where they are: what stays keeps its place, the rest grows in. */
+  function ingest(next, alpha = 0.3) {
+    data = next;
+    deriveRecords();
+    deriveMap();
+    paint();
+    activeKey = "";
+    engine.setData(
+      { nodes: engineNodes, links: engineLinks },
+      { keepPositions: true, alpha },
+    );
+    if (selected?.type === "node" && !nodeById.has(selected.id))
+      selected = null;
+    else if (selected?.type === "cluster" && !clusterById.has(selected.id))
+      selected = null;
+    else if (selected?.type === "edge" && !edgeById.has(selected.id))
+      selected = null;
+    else if (selected?.type === "list" || selected?.type === "stream") {
+      const fresh = selected.type === "list" ? registryList(selected.id) : null;
+      selected = fresh
+        ? { ...selected, ...fresh }
+        : {
+            ...selected,
+            ids: (selected.ids ?? []).filter((id) => nodeById.has(id)),
+            edges: (selected.edges ?? []).filter((id) => edgeById.has(id)),
+          };
+    }
+    if (hovered !== null && !nodeById.has(hovered)) hovered = null;
+    if (
+      trace &&
+      [...trace.nodes].some((id) => !nodeById.has(id) && !clusterById.has(id))
+    )
+      trace = null;
+    if (selected?.type !== "node") state.impact = false;
+    state.pins = state.pins.filter((id) => nodeById.has(id));
+    syncInspector();
+    renderKey();
+    renderHead();
+    refresh();
+    renderDetails();
+    renderPanels();
+    updateWhere();
+    const listing = $("net-list");
+    if (listing && !listing.querySelector(".net-list-stale"))
+      listing
+        .querySelector("summary")
+        ?.after(
+          paragraph(
+            "The map has changed since this list was made. Reload the page to update it.",
+            "hint net-list-stale",
+          ),
+        );
+  }
+
+  function receive(next) {
+    if (gesture) {
+      liveHeld = next;
+      return;
+    }
+    const change = networkChanges(data, next);
+    const wiring = (network) =>
+      network.edges
+        .map((edge) => edge.id)
+        .sort()
+        .join("|");
+    const reshaped =
+      change.added.length > 0 ||
+      change.removed.length > 0 ||
+      wiring(data) !== wiring(next);
+    ingest(next, reshaped ? 0.3 : 0);
+    const added = change.added.filter((id) => engineNodeById.has(id));
+    const changed = change.changed.filter((id) => engineNodeById.has(id));
+    if (added.length + changed.length + change.removed.length === 0) return;
+    engine.pulse(added, true);
+    engine.pulse(changed);
+    const words = [];
+    if (change.added.length > 0) words.push(`${change.added.length} new`);
+    if (change.changed.length > 0)
+      words.push(`${change.changed.length} changed`);
+    if (change.removed.length > 0) words.push(`${change.removed.length} gone`);
+    lastChange = {
+      seq: (lastChange?.seq ?? 0) + 1,
+      text: words.join(", "),
+      time: new Date().toLocaleTimeString([], {
+        hour: "2-digit",
+        minute: "2-digit",
+      }),
+      ids: [...added, ...changed],
+    };
+    if (announcer)
+      announcer.textContent = `The map was updated: ${lastChange.text}.`;
+  }
+
+  document.addEventListener("visibilitychange", () => {
+    if (!document.hidden && !liveStopped) scheduleLive(600);
+  });
+  setLive(liveStopped ? "stopped" : "live");
+  scheduleLive();
+
+  // Full screen: the map and its corners, nothing else.
+  const fullButton = $("net-full");
+  const stage = app.querySelector(".net-stage");
+  function toggleFull() {
+    if (document.fullscreenElement) document.exitFullscreen?.();
+    else stage?.requestFullscreen?.().catch(() => {});
+  }
+  if (fullButton) {
+    fullButton.hidden = !document.fullscreenEnabled || !stage;
+    fullButton.addEventListener("click", toggleFull);
+    document.addEventListener("fullscreenchange", () => {
+      const on = document.fullscreenElement === stage;
+      fullButton.setAttribute("aria-pressed", on ? "true" : "false");
+      fullButton.setAttribute(
+        "aria-label",
+        on ? "Leave full screen" : "Full screen",
+      );
+      fullButton.title = on ? "Leave full screen (Esc)" : "Full screen";
+    });
+  }
+
+  // Replay: the map grows in the order its records were made -----------------------------------------
+  /** When a record first appeared: the earliest of its creation, capture and approval times. */
+  function bornAt(node) {
+    const d = node.details ?? {};
+    let at = Infinity;
+    for (const value of [d.createdAt, d.capturedAt, d.approvedAt]) {
+      const time = Date.parse(value ?? "");
+      if (Number.isFinite(time)) at = Math.min(at, time);
+    }
+    return Number.isFinite(at) ? at : -Infinity;
+  }
+
+  function stopReplay() {
+    if (replay === null) return;
+    window.clearInterval(replay.timer);
+    replay = null;
+    refresh();
+    renderDetails();
+    if (announcer) announcer.textContent = "Replay finished.";
+  }
+
+  function startReplay() {
+    if (replay !== null) return stopReplay();
+    const times = nodes
+      .map(bornAt)
+      .filter(Number.isFinite)
+      .sort((a, b) => a - b);
+    if (times.length === 0 || reduceMotion) return;
+    if (state.mode !== "network") setMode("network");
+    const first = times[0];
+    const last = times[times.length - 1];
+    const steps = Math.min(48, Math.max(12, times.length));
+    let step = 0;
+    replay = { until: first - 1, timer: 0 };
+    refresh();
+    renderDetails();
+    replay.timer = window.setInterval(() => {
+      step += 1;
+      const until =
+        step >= steps ? Infinity : first + ((last - first) * step) / steps;
+      const appearing = nodes
+        .filter((node) => {
+          const at = bornAt(node);
+          return at > replay.until && at <= until;
+        })
+        .map((node) => node.id);
+      replay.until = until === Infinity ? last : until;
+      refresh();
+      engine.pulse(appearing, true);
+      if (step >= steps) stopReplay();
+    }, 7000 / steps);
+    if (announcer)
+      announcer.textContent =
+        "Replaying how this map grew, oldest records first. Press R or Escape to stop.";
+  }
+
   // Start ---------------------------------------------------------------------------------------------
   const params = new URLSearchParams(window.location.search);
   const hasQuery = [...params.keys()].length > 0;
@@ -3787,16 +4791,26 @@ function start(data) {
   new ResizeObserver(() => {
     engine.resize();
     if (!userMoved) fitAll(false);
+    refresh();
   }).observe(svg);
+  $("net-inspector")?.addEventListener("transitionend", (event) => {
+    if (event.propertyName === "transform") refresh();
+  });
   $("net-inspector-toggle")?.addEventListener("click", () => {
     const inspector = $("net-inspector");
     if (!inspector) return;
-    const collapsed = inspector.classList.toggle("collapsed");
-    $("net-inspector-toggle").setAttribute("aria-expanded", collapsed ? "false" : "true");
+    const open = inspector.classList.contains("collapsed");
+    inspectorKept = open;
+    inspector.classList.toggle("collapsed", !open);
+    $("net-inspector-toggle").setAttribute(
+      "aria-expanded",
+      open ? "true" : "false",
+    );
+    // The open part of the map changed size; keep everything in it unless the camera was placed by hand.
+    if (!userMoved && !selected) fitAll();
   });
   document.body.classList.add("js-ready");
 }
-
 
 const source = document.getElementById("network-data");
 if (source) {

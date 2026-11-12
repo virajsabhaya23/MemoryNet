@@ -1,0 +1,96 @@
+/* MemoryNet replay: Console material for website/demo.html and for the page `npm run demo` generates, which shares these class names */
+
+/* The replay page */
+.demo-hero { padding-block: var(--space-3xl) var(--space-2xl); border-bottom: 1px solid var(--color-rule); }
+.demo-hero h1 { max-width: 22ch; font-size: var(--text-display-s); }
+.demo-lead { max-width: 52ch; margin-top: var(--space-lg); color: var(--color-ink-2); font-size: var(--text-lead); line-height: 1.45; }
+.demo-stages { display: flex; flex-wrap: wrap; gap: var(--space-xs); margin-top: var(--space-xl); }
+.demo-stages a { display: inline-flex; align-items: center; min-height: 44px; padding: 0 var(--space-md); border: 1px solid var(--color-rule-2); border-radius: var(--radius-pill); background: var(--color-paper-2); color: var(--color-ink); font-size: var(--text-sm); font-weight: 500; text-decoration: none; white-space: nowrap; transition: background-color var(--dur-short) var(--ease-out), border-color var(--dur-short) var(--ease-out); }
+.demo-stages a:hover { border-color: var(--color-field-edge); background: color-mix(in oklab, var(--color-paper-2), var(--color-ink) 7%); color: var(--color-ink); }
+.demo-stages a:active { background: var(--color-paper-3); }
+.demo-stages a:focus-visible { outline: 2px solid var(--color-focus); outline-offset: 2px; }
+.demo-trail { padding-block: var(--space-2xl) var(--section-gap); }
+.demo-run { display: grid; grid-template-columns: repeat(12, minmax(0, 1fr)); column-gap: var(--gap-columns); row-gap: var(--space-md); margin-bottom: var(--space-3xl); }
+.demo-run h2 { grid-column: 1 / 8; font-size: var(--text-2xl); line-height: 1.15; }
+.demo-run__lead { grid-column: 1 / 7; color: var(--color-ink-2); font-size: var(--text-lead); line-height: 1.45; }
+.demo-run .demo-disclosure { grid-column: 8 / 13; grid-row: 1 / span 2; align-self: end; }
+.demo-disclosure { padding: var(--space-lg); border: 1px solid var(--color-rule); border-radius: var(--radius-card); background: var(--color-paper-2); color: var(--color-ink-2); line-height: 1.6; }
+
+/* The trail: five stages on one spine, the record beside each */
+.trail { margin: 0; padding: 0; list-style: none; counter-reset: stage; }
+.trail__stage { position: relative; display: grid; grid-template-columns: var(--space-2xl) minmax(0, 6fr) minmax(0, 5fr); column-gap: var(--gap-columns); padding-bottom: var(--space-3xl); counter-increment: stage; scroll-margin-top: var(--space-xl); }
+.trail__stage::before { content: counter(stage); grid-column: 1; grid-row: 1; display: grid; place-items: center; width: 40px; height: 40px; border: 1px solid var(--color-rule-2); border-radius: var(--radius-pill); background: var(--color-paper); color: var(--color-ink); font: 500 var(--text-md)/1 var(--font-body); }
+.trail__stage::after { content: ""; position: absolute; left: 20px; top: 48px; bottom: var(--space-xs); width: 1px; background: var(--color-rule-2); }
+.trail__stage:last-child { padding-bottom: 0; }
+.trail__stage:last-child::after { content: none; }
+.trail__stage:target::before { border-color: var(--color-accent); color: var(--color-accent); }
+.trail__text { display: grid; align-content: start; gap: var(--space-md); grid-column: 2; min-width: 0; }
+.trail__text h3 { padding-top: var(--space-2xs); font-size: var(--text-xl); }
+.trail__text p { max-width: 62ch; }
+.trail__records { display: grid; align-content: start; gap: var(--space-md); grid-column: 3; min-width: 0; }
+.trail__stage--lead .trail__records { grid-column: 2 / -1; margin-top: var(--space-xl); }
+.trail__stage--lead .demo-diff .change { padding-block: var(--space-md); font-size: var(--text-lead); line-height: 1.45; }
+.trail__stage--lead .demo-diff .change__id .reading { font-size: var(--text-md); }
+.trail__stage--lead .demo-state { justify-self: start; }
+.demo-record { margin: 0; overflow: hidden; border: 1px solid var(--color-rule); border-radius: var(--radius-card); background: var(--color-paper-3); }
+.demo-record blockquote { margin: 0; padding: var(--space-md) var(--space-lg); color: var(--color-ink); white-space: pre-wrap; }
+.demo-record figcaption { padding: var(--space-sm) var(--space-lg); border-top: 1px solid var(--color-rule); background: var(--color-paper-2); }
+.demo-record .reading { overflow-wrap: anywhere; }
+.readings { display: grid; gap: var(--rule-hair); margin: 0; overflow: hidden; border: 1px solid var(--color-rule); border-radius: var(--radius-card); background: var(--color-rule); }
+.readings > div { display: grid; grid-template-columns: minmax(0, 9rem) minmax(0, 1fr); gap: var(--space-sm); padding: var(--space-sm) var(--space-lg); background: var(--color-paper-2); }
+.readings dt { color: var(--color-muted); font-size: var(--text-sm); font-weight: 500; }
+.readings dd { margin: 0; overflow-wrap: anywhere; }
+.demo-diff { display: grid; gap: var(--rule-hair); margin: 0; padding: 0; overflow: hidden; border: 1px solid var(--color-rule); border-radius: var(--radius-card); background: var(--color-rule); list-style: none; }
+.demo-diff .change { grid-template-columns: var(--space-xl) minmax(0, 1fr); padding-right: var(--space-lg); }
+.demo-diff .change__id, .demo-diff del, .demo-diff ins { grid-column: 2; }
+.demo-results { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); margin: 0; padding: 0; border-top: 1px solid var(--color-rule); list-style: none; }
+.demo-results li { display: grid; align-content: start; gap: var(--space-3xs); padding: var(--space-sm) var(--space-sm) 0; border-left: 1px solid var(--color-rule); color: var(--color-ink-2); font-size: var(--text-sm); }
+.demo-results li:first-child { padding-left: 0; border-left: 0; }
+.demo-results .reading { color: var(--color-ink); font-size: var(--text-2xl); line-height: 1.1; }
+
+/* States: ok and bad mark status only */
+.demo-state { display: flex; flex-wrap: wrap; align-items: baseline; gap: var(--space-2xs) var(--space-sm); margin: 0; padding: var(--space-sm) var(--space-lg); border: 1px solid color-mix(in oklab, var(--color-ok) 35%, var(--color-ok-soft)); border-radius: var(--radius-pill); background: var(--color-ok-soft); color: var(--color-ink); font-weight: 500; }
+.demo-state-alert { border-color: color-mix(in oklab, var(--color-bad) 35%, var(--color-bad-soft)); background: var(--color-bad-soft); }
+.demo-meta { color: var(--color-muted); font-size: var(--text-sm); font-variant-numeric: tabular-nums slashed-zero; overflow-wrap: anywhere; }
+
+/* Run it yourself */
+.demo-reproduce { margin-top: var(--section-gap-s); padding-top: var(--space-2xl); border-top: 1px solid var(--color-rule); }
+.demo-reproduce--grid { display: grid; grid-template-columns: repeat(12, minmax(0, 1fr)); column-gap: var(--gap-columns); row-gap: var(--space-xl); align-items: start; }
+.demo-reproduce__copy { display: grid; gap: var(--space-md); grid-column: 1 / 7; min-width: 0; }
+.demo-reproduce--grid .command-block { grid-column: 8 / 13; }
+.demo-links { display: flex; flex-wrap: wrap; gap: var(--space-xs) var(--space-xl); }
+.demo-links a { font-weight: 500; white-space: nowrap; }
+
+/* The page `npm run demo` writes: the same content in its own markup */
+.demo-page { padding-block: var(--space-3xl) var(--section-gap-s); }
+.demo-page > h1 { max-width: 22ch; margin-top: var(--space-md); font-size: var(--text-display-s); }
+.demo-eyebrow { color: var(--color-muted); font-size: var(--text-sm); font-weight: 500; }
+.demo-page > .demo-disclosure { max-width: 75ch; margin-top: var(--space-xl); }
+.demo-step { margin-top: var(--space-md); border: 1px solid var(--color-rule); border-radius: var(--radius-card); background: var(--color-paper-2); color: var(--color-muted); scroll-margin-top: var(--space-xl); }
+.demo-step summary { display: flex; align-items: center; gap: var(--space-sm); min-height: 56px; padding: var(--space-sm) var(--space-lg); color: var(--color-ink); font-size: var(--text-lg); font-weight: 500; cursor: pointer; }
+.demo-step summary span { display: inline-grid; place-items: center; flex-shrink: 0; min-width: 32px; height: 32px; border: 1px solid var(--color-rule-2); border-radius: var(--radius-pill); color: var(--color-ink-2); font-size: var(--text-sm); }
+.demo-step summary:focus-visible { outline: 2px solid var(--color-focus); outline-offset: 2px; }
+.demo-step-body { display: grid; gap: var(--space-md); padding: 0 var(--space-lg) var(--space-lg); }
+.demo-step blockquote { margin: 0; padding: var(--space-md) var(--space-lg); border-radius: var(--radius-pill); background: var(--color-paper-3); color: var(--color-ink); white-space: pre-wrap; }
+section.demo-reproduce > * + * { margin-top: var(--space-md); }
+section.demo-reproduce > a { display: inline-block; font-weight: 500; }
+section.demo-reproduce pre { margin: 0; padding: var(--space-lg); overflow-x: auto; border: 1px solid var(--color-rule); border-radius: var(--radius-card); background: var(--color-paper-3); color: var(--color-ink-2); }
+.demo-header:not(:has(.site-header__bar)) { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--space-sm) var(--space-lg); min-height: var(--nav-h); }
+.demo-header:not(:has(.site-header__bar)) nav { display: flex; flex-wrap: wrap; gap: var(--space-xs) var(--space-lg); }
+.demo-header:not(:has(.site-header__bar)) nav a { color: var(--color-muted); font-size: var(--text-sm); font-weight: 500; text-decoration: none; }
+
+@media (max-width: 60rem) {
+  .demo-run, .demo-reproduce--grid { grid-template-columns: minmax(0, 1fr); }
+  .demo-run h2, .demo-run__lead, .demo-run .demo-disclosure, .demo-reproduce__copy, .demo-reproduce--grid .command-block { grid-column: 1; grid-row: auto; }
+  .trail__stage { grid-template-columns: var(--space-xl) minmax(0, 1fr); column-gap: var(--space-md); row-gap: var(--space-lg); }
+  .trail__stage::before { width: 32px; height: 32px; font-size: var(--text-sm); }
+  .trail__stage::after { left: 16px; top: 40px; }
+  .trail__text, .trail__records { grid-column: 2; }
+}
+@media (max-width: 40rem) {
+  .demo-stages a { padding: 0 var(--space-sm); }
+  .readings > div { grid-template-columns: minmax(0, 1fr); gap: var(--space-3xs); padding-inline: var(--space-md); }
+  .demo-record blockquote, .demo-record figcaption, .demo-state { padding-inline: var(--space-md); }
+  .demo-results .reading { font-size: var(--text-xl); }
+}
+@media (prefers-reduced-motion: reduce) { .demo-stages a { transition: none; } }
