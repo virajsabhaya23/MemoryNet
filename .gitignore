@@ -25,6 +25,9 @@ CLAUDE.md
 .local/
 .hallmark/
 website/.hallmark/
+.superpowers/
+.remember/
+.freebuff/
 *.db
 *.db-shm
 *.db-wal
