@@ -1,130 +1,282 @@
 <!doctype html>
 <html lang="en">
+
 <head>
-  <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="description" content="Install MemoryNet locally, navigate your organization’s network, maintain reviewed decisions, connect MCP, and understand the local pilot’s boundaries.">
-  <meta name="theme-color" content="#081120"><title>Run MemoryNet locally</title>
-  <link rel="icon" href="./assets/icon.svg" type="image/svg+xml"><link rel="stylesheet" href="./assets/styles.css">
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description"
+    content="Install MemoryNet locally, navigate your organization’s network, maintain reviewed decisions, connect MCP, and understand the local pilot’s boundaries.">
+  <meta name="theme-color" content="#15191c">
+  <title>Run MemoryNet locally</title>
+  <link rel="icon" href="./assets/icon.svg" type="image/svg+xml">
+  <link rel="preload" href="./assets/host-grotesk-latin-variable.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="stylesheet" href="./assets/styles.css">
   <script src="./assets/site.js" defer></script>
 </head>
+
 <body>
   <a class="skip-link" href="#main">Skip to content</a>
-  <header class="site-header container">
-    <a class="wordmark" href="./" aria-label="MemoryNet home"><img src="./assets/mark.svg" alt="" width="36" height="36">MemoryNet</a>
-    <button class="nav-toggle" type="button" aria-controls="main-navigation" aria-expanded="false" hidden>Menu</button>
-    <nav id="main-navigation" aria-label="Main navigation"><a href="./#workflow">The workflow</a><a href="./#readiness">What’s ready</a><a href="./guide.html" aria-current="page">Documentation</a></nav>
-    <a class="source-link" href="https://github.com/virajsabhaya23/MemoryNet">GitHub</a>
+  <header class="site-header">
+    <div class="container site-header__bar">
+      <a class="wordmark" href="./" aria-label="MemoryNet home"><img src="./assets/mark.svg" alt="" width="36"
+          height="36">MemoryNet</a>
+      <button class="nav-toggle" type="button" aria-controls="main-navigation" aria-expanded="false"
+        hidden>Menu</button>
+      <nav id="main-navigation" aria-label="Main navigation"><a href="./#workflow">The workflow</a><a
+          href="./#readiness">What’s ready</a><a href="./guide.html" aria-current="page">Documentation</a></nav>
+      <a class="source-link" href="https://github.com/virajsabhaya23/MemoryNet"><svg viewBox="0 0 24 24" width="18"
+          height="18" aria-hidden="true">
+          <path
+            d="M9 19c-4 1-4-2-6-2m12 5v-4c0-1 .1-2-.5-2.5C19 15 20 13 20 10a7 7 0 0 0-2-5 6 6 0 0 0-.1-4S16 1 12 3c-4-2-5.9-2-5.9-2A6 6 0 0 0 6 5a7 7 0 0 0-2 5c0 3 1 5 5.5 5.5C9 16 9 17 9 18v4"
+            fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" />
+        </svg><span class="source-link__text">GitHub</span></a>
+    </div>
   </header>
-  <main id="main" class="container guide-layout">
-    <aside class="guide-nav" aria-label="On this page"><a href="#install">Install</a><a href="#your-repository">Try your repository</a><a href="#work-repositories">Work repositories</a><a href="#graph">Explore the network</a><a href="#first-decision">Try a decision change</a><a href="#mcp">Connect an agent</a><a href="#recovery">Back up and restore</a><a href="#limits">Production boundary</a></aside>
-    <article class="guide-article">
-      <div class="hero guide-intro"><h1>Run MemoryNet locally.</h1>
-      <p class="lead">Try reviewed decisions and changing requirements with a public repository, then connect a coding agent.</p></div>
-      <section id="demo"><h2>See a decision change first</h2><p><a href="./demo.html">Open the three-minute read-only replay</a>, or run <code>npm run demo</code> after installing dependencies. It generates <code>.local/decision-demo/index.html</code> and a JSON report using a temporary database. It uses scripted extraction and fixture approvals, real MCP clients, and actual stale-export checks. It makes no external API calls and does not open your existing workspace.</p></section>
-      <section id="install">
-        <h2>Install the source</h2>
-        <p>Use Node.js 24 or newer, npm, and Git. Start from a MemoryNet source checkout or exported source distribution and run these commands in its root directory. Get the source from the <a href="https://github.com/virajsabhaya23/MemoryNet">MemoryNet repository</a>.</p>
-        <div class="command-block"><div class="command-heading"><span>Terminal</span><button class="copy-button" type="button" data-copy="guide-install">Copy commands</button><span role="status" aria-live="polite"></span></div><pre><code id="guide-install">npm ci --ignore-scripts
-npm run check
-MEMORYNET_AUTH_MODE=sandbox MEMORYNET_PROTOTYPE_CONFIG=off MEMORYNET_DATA_DIR=.data/first-trial npm run app</code></pre></div>
-        <p>Open <code>http://127.0.0.1:3050</code>. In this isolated development sandbox, choose <strong>System → Load synthetic example data</strong>, then select a test person. A model account, API key, and database server are not required. The picker lets anyone at this computer act as these local principals; it is not authentication.</p>
-        <p>The app creates <code>.data/first-trial/</code>. Keep it on loopback and stop it with Ctrl+C before another process uses the same database. These shell examples work in macOS/Linux shells; on other shells set the named environment variables before running the command.</p>
-        <p><strong>Local configuration:</strong> a clean checkout starts the development sandbox. A workspace created by <code>npm run setup</code> opens as its configured local operator with <code>npm start</code>. Existing GitHub and access-key gates remain enabled; <code>MEMORYNET_AUTH_MODE</code> selects a mode explicitly. An optional <code>.local/prototype/config.json</code> selects access-key mode, a configured operator, a database, and pinned source checkouts. Its database overrides <code>MEMORYNET_DATA_DIR</code>; <code>MEMORYNET_PROTOTYPE_CONFIG=off</code> disables prepared configuration and <code>MEMORYNET_AUTH_MODE=sandbox</code> explicitly selects test personas. Optional GitHub sign-in replaces the picker and disables System fixture controls; see <code>docs/prototype.md</code>.</p>
-      </section>
-      <section id="your-repository">
-        <h2>Try your personal public repository</h2>
-        <p>MemoryNet runs alongside your repository. Installing it does not change your code, create commits, or install a GitHub App. The current importer takes a one-time snapshot of public repository metadata and merged PR text; it does not continuously index code or synchronize future changes.</p>
-        <ol>
-          <li>Install the GitHub CLI and sign in with <code>gh auth login</code>. Stop the earlier trial app before starting the next one on port 3050.</li>
-          <li>Replace <code>YOUR_OWNER</code> and <code>YOUR_REPO</code> below with your GitHub account or organization and repository name. Keep the new database separate from any existing workspace.</li>
-        </ol>
-        <pre class="light-code"><code>npm run data:download:evidence -- --owner YOUR_OWNER --repos YOUR_REPO --prs 20 --out .data/public/my-repo-evidence.json
-MEMORYNET_DATA_DIR=.data/personal-trial npm run data:import:evidence -- .data/public/my-repo-evidence.json
-MEMORYNET_PROTOTYPE_CONFIG=off MEMORYNET_DATA_DIR=.data/personal-trial npm run app</code></pre>
-        <ol start="3">
-          <li>Keep the import summary's owner, reviewer, importer, project, and organization IDs. Open the app and select the local workspace owner or reviewer from the picker. These roles are local test assignments, not proof of upstream GitHub membership.</li>
-          <li>Open your project and inspect its sources. Depending on PR labels and titles, the importer may also create pending candidates; it approves none. With no merged PRs, capture an exact public source manually on the project page.</li>
-          <li>For guidance that an agent or task can use, create a <strong>new proposal</strong> citing the source. Set its numeric GitHub repository ID, exact branch, and UTC validity interval. Imported heuristic candidates have no reviewed applicability; approving them alone does not make them eligible for scoped MCP or Affected work.</li>
-          <li>Use a different local human principal to review and approve the exact revision. In this single-operator sandbox, switching principals exercises the permission checks; it is not an independent two-person review. Then follow the decision-change and MCP steps below.</li>
-        </ol>
-        <p>The importer refuses to load the same owner snapshot twice into one database. Use a new explicit database directory for a later snapshot. It does not clone repositories or provision the original-source browser shown in the configured Vercel screenshots. A local Git checkout is needed only for source browsing configured separately or committed-file reconciliation.</p>
-      </section>
-      <section id="work-repositories">
-        <h2>Try it for a work repository</h2>
-        <p>For a public work repository, use the same snapshot workflow within your organization's policies. To evaluate a private work scenario today, recreate one decision and a small task with synthetic or already-public material. Use an isolated local database and compare it with your team's existing ADRs and maintained instructions.</p>
-        <p>Private personal and private work repositories are outside the current supported pilot. The downloader deliberately skips private and archived repositories. Shared authentication, verified GitHub ingestion, live permission updates, deletion/retention, and approved external-model processing remain prerequisites for confidential workloads. The private-key prototype does not supply these missing organizational controls.</p>
-        <p>A useful trial asks: <strong>when an API rule changes during implementation, does the affected-work warning prevent a stale spec or agent handoff, after counting setup and review time?</strong> Choose one real problem represented with permitted data; a larger imported graph alone does not answer that question.</p>
-      </section>
-      <section id="graph">
-        <h2>From your organization to one decision</h2>
-        <p>Open an organization and choose <strong>Open the network</strong>. The map groups projects inside business units, with organization-wide guidance at the center. It connects memories, rules, instructions, skills, agent definitions, their owners, and source evidence.</p>
-        <ol>
-          <li><strong>Find your project.</strong> Select its group and choose <strong>Only this group</strong>, or use the search field to find a named record. Drag to pan, scroll to zoom, and use the breadcrumbs to move back through the organization.</li>
-          <li><strong>Follow a connection.</strong> Hover to preview a neighborhood; select a node to inspect its owner, status, and current version. Choose <strong>Where did this come from?</strong> to trace supporting memories and pull requests, or <strong>What depends on this?</strong> to see connected definitions that rely on it.</li>
-          <li><strong>Maintain the record.</strong> Choose <strong>Open its page</strong> to review its evidence and version history. Propose a change for a separate authorized reviewer. The record pages preserve earlier versions when guidance is revised or replaced; ownership and role controls follow the selected scope.</li>
-        </ol>
-        <p><strong>Your network</strong> starts with you and the places you can access. It distinguishes your own role from access inherited through an organization or business unit. Open a place to expand its knowledge, then follow its link to the project page. Administrators can manage roles at the organization, business-unit, or project level.</p>
-        <p>Use <kbd>⌘</kbd> + <kbd>K</kbd> or <kbd>/</kbd> to search the full map, the arrow keys to move between items, and <kbd>Enter</kbd> to select. The <strong>Table</strong> view and the list below the map provide the records without the diagram. Filters and saved views help return to a particular area; saved views stay in your browser.</p>
-        <p>Tasks are tracked separately under a project’s <strong>Affected work</strong> page. Agent definitions describe their responsibilities and instructions; the map does not run agents. The homepage shows screenshots of the separately configured Vercel prototype, using original repository checkouts and public PR evidence. The website itself does not provide a live application or connect to your records.</p>
-      </section>
-      <section id="first-decision">
-        <h2>Try one decision change</h2>
-        <ol>
-          <li><strong>Capture evidence.</strong> Add a public source with its exact revision, then create a new decision proposal with a repository, exact branch, and UTC validity interval.</li>
-          <li><strong>Review the exact version.</strong> Inspect the source and approve the exact proposal revision as a separate authorized human principal. In a real team trial, a different person must perform that review.</li>
-          <li><strong>Link active work.</strong> Open Affected work in the project. Create a task with its spec/file hashes and pin the approved decision version.</li>
-          <li><strong>Change and revalidate.</strong> Propose a revision, review it, then reopen Affected work. The old baseline needs review and cannot be exported as current context.</li>
-          <li><strong>Check the implementation.</strong> Refresh the task’s context and run the repository’s behavior tests. Fresh context and matching hashes do not prove that code follows a decision.</li>
-        </ol>
-        <p>For a reproducible isolated check, run <code>npm run eval:work</code>. It uses automated synthetic fixture approvals and makes no model calls.</p>
-      </section>
-      <section id="mcp">
-        <h2>Connect a coding agent</h2>
-        <p>The quickest path creates a separate workspace for one GitHub repository, a reviewer, a coding agent and its MCP configuration in one step. Run it in the MemoryNet source directory; <code>--client</code> also accepts <code>claude</code>, <code>cursor</code> or <code>codex</code>:</p>
-        <pre class="light-code"><code>npm run setup -- --repo OWNER/REPO --reviewer "A teammate" --client vscode --project-dir ../REPO
-npm start
-npm run doctor -- --project-dir ../REPO</code></pre>
-        <p>The agent can call <code>get_task_context</code> with the task and the files it will touch, propose decisions with <code>propose_memory</code> and report stale guidance with <code>report_outdated</code>. It can never approve: a different person approves each exact version on the Review page. The written client file holds local paths, never the credential. Launches were verified with the official MCP SDK client, not inside every coding application. To connect the importer workspace above by hand instead, follow the steps below.</p>
-        <p>The local MCP server also offers <code>get_context</code>. It returns approved guidance for an operator-bound repository, exact branch, and current validity interval.</p>
-        <p>First approve at least one decision with matching repository, exact branch, and currently active validity interval. Pending and legacy unscoped records are excluded. Use the importer agent ID printed by the public import (it already has local contributor and repository-read assignments), or create an agent principal and grant those assignments yourself in the sandbox.</p>
-        <p>Replace each uppercase placeholder below. The repository ID is GitHub's numeric ID, not <code>owner/name</code>; the project ID is MemoryNet's UUID. Run the command in the MemoryNet source directory:</p>
-        <pre class="light-code"><code>mkdir -p .local/mcp
-npm run mcp:binding -- .local/mcp/agent-main.json \
-  AGENT_UUID PROJECT_UUID GITHUB_NUMERIC_REPO_ID EXACT_BRANCH</code></pre>
-        <p>Stop the app, then restart it against the <strong>same trial database</strong> with the binding:</p>
-        <pre class="light-code"><code>MEMORYNET_PROTOTYPE_CONFIG=off MEMORYNET_DATA_DIR=.data/personal-trial \
-MEMORYNET_AGENT_BINDING_FILE="$PWD/.local/mcp/agent-main.json" npm run app</code></pre>
-        <p>In your MCP host, add a stdio server with an absolute Node executable, an absolute path to <code>src/scripts/mcp.ts</code>, and these environment variables. Replace the example paths with your actual installation. Host-specific configuration still needs verification.</p>
-        <pre class="light-code"><code>{
-  "command": "/ABSOLUTE/PATH/TO/node",
-  "args": ["/ABSOLUTE/PATH/TO/MemoryNet/src/scripts/mcp.ts"],
-  "env": {
-    "MEMORYNET_AGENT_BINDING_FILE": "/ABSOLUTE/PATH/TO/MemoryNet/.local/mcp/agent-main.json",
-    "MEMORYNET_APP_URL": "http://127.0.0.1:3050"
-  }
-}</code></pre>
-        <p>Ask the host to call <code>get_context</code> with a query about your approved decision. Check returned IDs, versions, citations, and applicability. An empty result can mean no approved scoped match; an authorization or transport error is a different outcome. This manually generated v1 binding retrieves context only. The v2 binding created by setup can also submit pending proposals and outdated reports; it never grants approval.</p>
-        <p>The owner-only binding expires after 24 hours and grants no database roles itself. Keep it private. This stdio bridge is local authorization, not remote OAuth. Run <code>npm run eval:smoke</code> for an isolated protocol check.</p>
-      </section>
-      <section id="recovery">
-        <h2>Keep a recoverable copy</h2>
-        <p>Stop the app before backing up. Use a new destination for each operation:</p>
-        <pre class="light-code"><code>MEMORYNET_DATA_DIR=.data/personal-trial npm run db:backup -- .local/backups/before-upgrade
-npm run db:restore -- .local/backups/before-upgrade .data/recovered
-MEMORYNET_PROTOTYPE_CONFIG=off MEMORYNET_DATA_DIR=.data/recovered npm run app</code></pre>
-        <p>Backups contain the entire database and are not encrypted. Restore verifies file hashes, requires the matching PGlite version, and never overwrites an existing directory. Check the recovered records before switching databases.</p>
-        <p>A crash can leave a <code>.memorynet-lock</code> directory. Verify its recorded owner process has stopped before removing that lock. Never remove a live lock. <code>app:reset</code> permanently deletes a database; it is not record-level retention.</p>
-      </section>
-      <section id="limits">
-        <h2>The production boundary</h2>
-        <p>This is a local pilot. Shared or private-data production still requires:</p>
-        <ul><li>Hosted identity, tenant membership, and remote agent delegation.</li><li>Signed GitHub ingestion and permission synchronization beyond signed-in users.</li><li>Record deletion, retention, backup expiry, and restore policy.</li><li>Supported deployment, monitoring, load testing, and recovery drills.</li></ul>
-        <p>Product work also remains: automatic task notifications, persistent task-bound delivery, and verified spec-tool integration are partial or absent. Real-team benefit and repeat adoption have not been established.</p>
-        <p>The repository’s <code>docs/production-readiness.md</code> lists acceptance checks. GitHub Pages serves this website; it does not host the MemoryNet application.</p>
-      </section>
-      <a class="text-link" href="./">Return to MemoryNet</a>
-    </article>
+  <main id="main">
+    <div class="guide-hero">
+      <div class="container">
+        <h1>Run MemoryNet locally.</h1>
+        <p class="lead">Try reviewed decisions and changing requirements with a public repository, then connect a coding
+          agent.</p>
+      </div>
+    </div>
+    <div class="container guide-layout">
+      <aside class="guide-nav" aria-label="On this page"><a href="#install">Install</a><a href="#your-repository">Try
+          your repository</a><a href="#work-repositories">Work repositories</a><a href="#graph">Explore the
+          network</a><a href="#first-decision">Try a decision change</a><a href="#mcp">Connect an agent</a><a
+          href="#recovery">Back up and restore</a><a href="#limits">Production boundary</a></aside>
+      <article class="guide-article">
+        <section id="demo">
+          <h2>See a decision change first</h2>
+          <p><a href="./demo.html">Open the three-minute read-only replay</a>, or run <code>npm run demo</code> after
+            installing dependencies. It generates <code>.local/decision-demo/index.html</code> and a JSON report using a
+            temporary database. It uses scripted extraction and fixture approvals, real MCP clients, and actual
+            stale-export checks. It makes no external API calls and does not open your existing workspace.</p>
+        </section>
+        <section id="install">
+          <h2>Install the source</h2>
+          <p>Use Node.js 24 or newer, npm, and Git. Start from a MemoryNet source checkout or exported source
+            distribution and run these commands in its root directory. Get the source from the <a
+              href="https://github.com/virajsabhaya23/MemoryNet">MemoryNet repository</a>.</p>
+          <div class="command-block">
+            <div class="command-heading"><span>Terminal</span><button class="button copy-button" type="button"
+                data-copy="guide-install">Copy commands</button><span role="status" aria-live="polite"></span></div>
+            <pre><code id="guide-install"><span class="ln">npm ci --ignore-scripts</span>
+<span class="ln">npm run check</span>
+<span class="ln">MEMORYNET_AUTH_MODE=sandbox MEMORYNET_PROTOTYPE_CONFIG=off MEMORYNET_DATA_DIR=.data/first-trial npm run app</span></code></pre>
+          </div>
+          <p>Open <code>http://127.0.0.1:3050</code>. In this isolated development sandbox, choose <strong>System → Load
+              synthetic example data</strong>, then select a test person. A model account, API key, and database server
+            are not required. The picker lets anyone at this computer act as these local principals; it is not
+            authentication.</p>
+          <p>The app creates <code>.data/first-trial/</code>. Keep it on loopback and stop it with Ctrl+C before another
+            process uses the same database. These shell examples work in macOS/Linux shells; on other shells set the
+            named environment variables before running the command.</p>
+          <p><strong>Local configuration:</strong> a clean checkout starts the development sandbox. A workspace created
+            by <code>npm run setup</code> opens as its configured local operator with <code>npm start</code>. Existing
+            GitHub and access-key gates remain enabled; <code>MEMORYNET_AUTH_MODE</code> selects a mode explicitly. An
+            optional <code>.local/prototype/config.json</code> selects access-key mode, a configured operator, a
+            database, and pinned source checkouts. Its database overrides <code>MEMORYNET_DATA_DIR</code>;
+            <code>MEMORYNET_PROTOTYPE_CONFIG=off</code> disables prepared configuration and
+            <code>MEMORYNET_AUTH_MODE=sandbox</code> explicitly selects test personas. Optional GitHub sign-in replaces
+            the picker and disables System fixture controls; see <code>docs/prototype.md</code>.
+          </p>
+        </section>
+        <section id="your-repository">
+          <h2>Try your personal public repository</h2>
+          <p>MemoryNet runs alongside your repository. Installing it does not change your code, create commits, or
+            install a GitHub App. The current importer takes a one-time snapshot of public repository metadata and
+            merged PR text; it does not continuously index code or synchronize future changes.</p>
+          <ol>
+            <li>Install the GitHub CLI and sign in with <code>gh auth login</code>. Stop the earlier trial app before
+              starting the next one on port 3050.</li>
+            <li>Replace <code>YOUR_OWNER</code> and <code>YOUR_REPO</code> below with your GitHub account or
+              organization and repository name. Keep the new database separate from any existing workspace.</li>
+          </ol>
+          <pre class="light-code"><code><span class="ln">npm run data:download:evidence -- --owner YOUR_OWNER --repos YOUR_REPO --prs 20 --out .data/public/my-repo-evidence.json</span>
+<span class="ln">MEMORYNET_DATA_DIR=.data/personal-trial npm run data:import:evidence -- .data/public/my-repo-evidence.json</span>
+<span class="ln">MEMORYNET_PROTOTYPE_CONFIG=off MEMORYNET_DATA_DIR=.data/personal-trial npm run app</span></code></pre>
+          <ol start="3">
+            <li>Keep the import summary’s owner, reviewer, importer, project, and organization IDs. Open the app and
+              select the local workspace owner or reviewer from the picker. These roles are local test assignments, not
+              proof of upstream GitHub membership.</li>
+            <li>Open your project and inspect its sources. Depending on PR labels and titles, the importer may also
+              create pending candidates; it approves none. With no merged PRs, capture an exact public source manually
+              on the project page.</li>
+            <li>For guidance that an agent or task can use, create a <strong>new proposal</strong> citing the source.
+              Set its numeric GitHub repository ID, exact branch, and UTC validity interval. Imported heuristic
+              candidates have no reviewed applicability; approving them alone does not make them eligible for scoped MCP
+              or Affected work.</li>
+            <li>Use a different local human principal to review and approve the exact revision. In this single-operator
+              sandbox, switching principals exercises the permission checks; it is not an independent two-person review.
+              Then follow the decision-change and MCP steps below.</li>
+          </ol>
+          <p>The importer refuses to load the same owner snapshot twice into one database. Use a new explicit database
+            directory for a later snapshot. It does not clone repositories or provision the original-source browser
+            shown in the configured Vercel screenshots. A local Git checkout is needed only for source browsing
+            configured separately or committed-file reconciliation.</p>
+        </section>
+        <section id="work-repositories">
+          <h2>Try it for a work repository</h2>
+          <p>For a public work repository, use the same snapshot workflow within your organization’s policies. To
+            evaluate a private work scenario today, recreate one decision and a small task with synthetic or
+            already-public material. Use an isolated local database and compare it with your team’s existing ADRs and
+            maintained instructions.</p>
+          <p>Private personal and private work repositories are outside the current supported pilot. The downloader
+            deliberately skips private and archived repositories. Shared authentication, verified GitHub ingestion, live
+            permission updates, deletion/retention, and approved external-model processing remain prerequisites for
+            confidential workloads. The private-key prototype does not supply these missing organizational controls.</p>
+          <p>A useful trial asks: <strong>when an API rule changes during implementation, does the affected-work warning
+              prevent a stale spec or agent handoff, after counting setup and review time?</strong> Choose one real
+            problem represented with permitted data; a larger imported graph alone does not answer that question.</p>
+        </section>
+        <section id="graph">
+          <h2>From your organization to one decision</h2>
+          <p>Open an organization and choose <strong>Open the network</strong>. The map groups projects inside business
+            units, with organization-wide guidance at the center. It connects memories, rules, instructions, skills,
+            agent definitions, their owners, and source evidence.</p>
+          <p>Each repository is a tinted cell, and the sign inside each node shows what the record is: a repository, a
+            pull request, a decision, a rule. Light moving along connections marks recent activity; turn it off under
+            <strong>View</strong>, or set reduced motion to keep the map still. The details panel opens when you select
+            something.
+          </p>
+          <ol>
+            <li><strong>Find your project.</strong> Select its group and choose <strong>Only this group</strong>, or use
+              the search field to find a named record. Drag to pan, scroll to zoom, and use the breadcrumbs to move back
+              through the organization.</li>
+            <li><strong>Follow a connection.</strong> Hover to preview a neighborhood; select a node to inspect its
+              owner, status, and current version. Choose <strong>Where did this come from?</strong> to trace supporting
+              memories and pull requests, or <strong>What depends on this?</strong> to see connected definitions that
+              rely on it.</li>
+            <li><strong>Maintain the record.</strong> Choose <strong>Open its page</strong> to review its evidence and
+              version history. Propose a change for a separate authorized reviewer. The record pages preserve earlier
+              versions when guidance is revised or replaced; ownership and role controls follow the selected scope.</li>
+          </ol>
+          <p><strong>Your network</strong> starts with you and the places you can access. It distinguishes your own role
+            from access inherited through an organization or business unit. Open a place to expand its knowledge, then
+            follow its link to the project page. Administrators can manage roles at the organization, business-unit, or
+            project level.</p>
+          <p>Use <kbd>⌘</kbd> + <kbd>K</kbd> or <kbd>/</kbd> to search the full map, the arrow keys to move between
+            items, and <kbd>Enter</kbd> to select. The <strong>Table</strong> view and the list below the map provide
+            the records without the diagram. Filters and saved views help return to a particular area; saved views stay
+            in your browser.</p>
+          <p>Tasks are tracked separately under a project’s <strong>Affected work</strong> page. Agent definitions
+            describe their responsibilities and instructions; the map does not run agents. The homepage’s review and
+            source screenshots show the separately configured Vercel prototype, using original repository checkouts and
+            public PR evidence; its network pictures show the synthetic example data. The website itself does not
+            provide a live application or connect to your records.</p>
+        </section>
+        <section id="first-decision">
+          <h2>Try one decision change</h2>
+          <ol>
+            <li><strong>Capture evidence.</strong> Add a public source with its exact revision, then create a new
+              decision proposal with a repository, exact branch, and UTC validity interval.</li>
+            <li><strong>Review the exact version.</strong> Inspect the source and approve the exact proposal revision as
+              a separate authorized human principal. In a real team trial, a different person must perform that review.
+            </li>
+            <li><strong>Link active work.</strong> Open Affected work in the project. Create a task with its spec/file
+              hashes and pin the approved decision version.</li>
+            <li><strong>Change and revalidate.</strong> Propose a revision, review it, then reopen Affected work. The
+              old baseline needs review and cannot be exported as current context.</li>
+            <li><strong>Check the implementation.</strong> Refresh the task’s context and run the repository’s behavior
+              tests. Fresh context and matching hashes do not prove that code follows a decision.</li>
+          </ol>
+          <p>For a reproducible isolated check, run <code>npm run eval:work</code>. It uses automated synthetic fixture
+            approvals and makes no model calls.</p>
+        </section>
+        <section id="mcp">
+          <h2>Connect a coding agent</h2>
+          <p>The quickest path creates a separate workspace for one GitHub repository, a reviewer, a coding agent and
+            its MCP configuration in one step. Run it in the MemoryNet source directory; <code>--client</code> also
+            accepts <code>claude</code>, <code>cursor</code> or <code>codex</code>:</p>
+          <pre class="light-code"><code><span class="ln">npm run setup -- --repo OWNER/REPO --reviewer "A teammate" --client vscode --project-dir ../REPO</span>
+<span class="ln">npm start</span>
+<span class="ln">npm run doctor -- --project-dir ../REPO</span></code></pre>
+          <p>The agent can call <code>get_task_context</code> with the task and the files it will touch, propose
+            decisions with <code>propose_memory</code> and report stale guidance with <code>report_outdated</code>. It
+            can never approve: a different person approves each exact version on the Review page. The written client
+            file holds local paths, never the credential. Launches were verified with the official MCP SDK client, not
+            inside every coding application. To connect the importer workspace above by hand instead, follow the steps
+            below.</p>
+          <p>The local MCP server also offers <code>get_context</code>. It returns approved guidance for an
+            operator-bound repository, exact branch, and current validity interval.</p>
+          <p>First approve at least one decision with matching repository, exact branch, and currently active validity
+            interval. Pending and legacy unscoped records are excluded. Use the importer agent ID printed by the public
+            import (it already has local contributor and repository-read assignments), or create an agent principal and
+            grant those assignments yourself in the sandbox.</p>
+          <p>Replace each uppercase placeholder below. The repository ID is GitHub’s numeric ID, not
+            <code>owner/name</code>; the project ID is MemoryNet’s UUID. Run the command in the MemoryNet source
+            directory:
+          </p>
+          <pre class="light-code"><code><span class="ln">mkdir -p .local/mcp</span>
+<span class="ln">npm run mcp:binding -- .local/mcp/agent-main.json \</span>
+<span class="ln">  AGENT_UUID PROJECT_UUID GITHUB_NUMERIC_REPO_ID EXACT_BRANCH</span></code></pre>
+          <p>Stop the app, then restart it against the <strong>same trial database</strong> with the binding:</p>
+          <pre class="light-code"><code><span class="ln">MEMORYNET_PROTOTYPE_CONFIG=off MEMORYNET_DATA_DIR=.data/personal-trial \</span>
+<span class="ln">MEMORYNET_AGENT_BINDING_FILE="$PWD/.local/mcp/agent-main.json" npm run app</span></code></pre>
+          <p>In your MCP host, add a stdio server with an absolute Node executable, an absolute path to
+            <code>src/scripts/mcp.ts</code>, and these environment variables. Replace the example paths with your actual
+            installation. Host-specific configuration still needs verification.
+          </p>
+          <pre class="light-code"><code><span class="ln">{</span>
+<span class="ln">  "command": "/ABSOLUTE/PATH/TO/node",</span>
+<span class="ln">  "args": ["/ABSOLUTE/PATH/TO/MemoryNet/src/scripts/mcp.ts"],</span>
+<span class="ln">  "env": {</span>
+<span class="ln">    "MEMORYNET_AGENT_BINDING_FILE": "/ABSOLUTE/PATH/TO/MemoryNet/.local/mcp/agent-main.json",</span>
+<span class="ln">    "MEMORYNET_APP_URL": "http://127.0.0.1:3050"</span>
+<span class="ln">  }</span>
+<span class="ln">}</span></code></pre>
+          <p>Ask the host to call <code>get_context</code> with a query about your approved decision. Check returned
+            IDs, versions, citations, and applicability. An empty result can mean no approved scoped match; an
+            authorization or transport error is a different outcome. This manually generated v1 binding retrieves
+            context only. The v2 binding created by setup can also submit pending proposals and outdated reports; it
+            never grants approval.</p>
+          <p>The owner-only binding expires after 24 hours and grants no database roles itself. Keep it private. This
+            stdio bridge is local authorization, not remote OAuth. Run <code>npm run eval:smoke</code> for an isolated
+            protocol check.</p>
+        </section>
+        <section id="recovery">
+          <h2>Keep a recoverable copy</h2>
+          <p>Stop the app before backing up. Use a new destination for each operation:</p>
+          <pre class="light-code"><code><span class="ln">MEMORYNET_DATA_DIR=.data/personal-trial npm run db:backup -- .local/backups/before-upgrade</span>
+<span class="ln">npm run db:restore -- .local/backups/before-upgrade .data/recovered</span>
+<span class="ln">MEMORYNET_PROTOTYPE_CONFIG=off MEMORYNET_DATA_DIR=.data/recovered npm run app</span></code></pre>
+          <p>Backups contain the entire database and are not encrypted. Restore verifies file hashes, requires the
+            matching PGlite version, and never overwrites an existing directory. Check the recovered records before
+            switching databases.</p>
+          <p>A crash can leave a <code>.memorynet-lock</code> directory. Verify its recorded owner process has stopped
+            before removing that lock. Never remove a live lock. <code>app:reset</code> permanently deletes a database;
+            it is not record-level retention.</p>
+        </section>
+        <section id="limits">
+          <h2>The production boundary</h2>
+          <p>This is a local pilot. Shared or private-data production still requires:</p>
+          <ul>
+            <li>Hosted identity, tenant membership, and remote agent delegation.</li>
+            <li>Signed GitHub ingestion and permission synchronization beyond signed-in users.</li>
+            <li>Record deletion, retention, backup expiry, and restore policy.</li>
+            <li>Supported deployment, monitoring, load testing, and recovery drills.</li>
+          </ul>
+          <p>Product work also remains: automatic task notifications, persistent task-bound delivery, and verified
+            spec-tool integration are partial or absent. Real-team benefit and repeat adoption have not been
+            established.</p>
+          <p>The repository’s <code>docs/production-readiness.md</code> lists acceptance checks. GitHub Pages serves
+            this website; it does not host the MemoryNet application.</p>
+        </section>
+        <a class="text-link guide-back" href="./">Return to MemoryNet</a>
+      </article>
+    </div>
   </main>
-  <footer class="site-footer container"><a class="wordmark" href="./"><img src="./assets/mark.svg" alt="" width="32" height="32">MemoryNet</a><p>Local first. Human reviewed.</p><a href="https://github.com/virajsabhaya23/MemoryNet">Source repository</a></footer>
+  <footer class="site-footer">
+    <div class="container">
+      <a class="wordmark mast__wordmark" href="./"><img src="./assets/mark.svg" alt="" width="32"
+          height="32">MemoryNet</a>
+      <div class="mast__row">
+        <p>Local first. Human reviewed.</p>
+        <div class="mast__links"><a href="https://github.com/virajsabhaya23/MemoryNet">Source repository</a></div>
+      </div>
+    </div>
+  </footer>
 </body>
+
 </html>
