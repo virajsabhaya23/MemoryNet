@@ -1,3 +1,8 @@
+<!--
+Set the base branch to development for contribution PRs. See CONTRIBUTING.md.
+After opening the PR, follow the CLA check's comment if it asks you to sign.
+-->
+
 ## What does this change?
 
 <!-- The problem, the resulting behavior, and the issue it addresses, if any. -->
@@ -12,5 +17,4 @@
 - [ ] Behavior changes have focused tests, especially for authorization, review, retrieval and error handling.
 - [ ] User-visible behavior and configuration changes are documented.
 - [ ] No keys, bindings, databases, private organization data or internal planning are included.
-- [ ] Every author agreed to the contributor license agreement in CLA.md (the CLA check explains how).
 - [ ] If an AI coding assistant materially contributed, the commits disclose it, for example with a `Co-authored-by:` trailer.

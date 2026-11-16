@@ -59,3 +59,11 @@ This exports the current working bytes of public source, tests, migrations, exam
 The exporter rejects symlinks and several known credential formats. This is a limited check, not a complete secret scan. Review the exported inventory before sharing. Making an existing repository public also exposes its history, which requires a separate review.
 
 Check the exact exported tree with `npm ci --ignore-scripts`, `npm run check`, `npm run eval:smoke`, and the [ESLint example verification](../examples/eslint-demo/README.md). Keep backups and bindings in private storage. Personal notes and internal execution evidence belong outside the public checkout.
+
+## Publish a GitHub release
+
+1. On `development`, update [the changelog](../CHANGELOG.md) and match the version in `package.json` and `package-lock.json`. Open a release pull request into `main`.
+2. Check the PR's CI results and run the [release checks](../RELEASE_VALIDATION.md#reproduce-the-release-checks) on the source distribution. Generate the distribution from a clean checkout of the release tree.
+3. Merge the release PR, tag that exact `main` commit as `vMAJOR.MINOR.PATCH`, and publish a GitHub release with notes and the checked source bundle. The bundle includes its file manifest.
+
+The bundle runs the local dashboard, CLI, and MCP server. The public website has its own [GitHub Pages publishing workflow](github-pages.md).

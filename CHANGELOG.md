@@ -1,6 +1,8 @@
 # Changelog
 
-## Unreleased
+## 0.2.0 - 2026-11-16
+
+- Explain how to submit contributions from a fork or feature branch, target `development`, and sign the CLA after opening a pull request.
 
 - Keep the network map live while it is open: it re-reads the same permission-filtered records every 15 seconds through `GET /orgs/:id/network/live` (`304` while unchanged), grows new records in place, rings what changed in cool blue, and updates the counts, attention chips and brain registry. It pauses in a hidden tab and stops after sign-out or lost access.
 - Keep repository and project cells apart: a hub and its own records form one cell, cells never overlap, outlines are tight rounded hulls, several connections between the same two records fan out, and names no longer cover nodes or the floating panels.
