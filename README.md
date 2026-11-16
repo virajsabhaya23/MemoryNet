@@ -4,6 +4,8 @@ MemoryNet helps stop AI coding agents from building on decisions your team alrea
 
 Capture the evidence, approve an exact version, and give agents the decisions that apply to their repository and branch. When guidance changes, MemoryNet flags tasks pinned to the old decision and blocks stale context exports. Every delivery leaves an audit trail.
 
+To propose a change, follow the [contributing guide](CONTRIBUTING.md#open-a-pull-request) and read the [contributor license agreement](CLA.md).
+
 ## See a decision change in three minutes
 
 ```sh
@@ -144,4 +146,4 @@ The static website source is `website/`; it explains the product and setup. GitH
 
 Source layout: `src/` contains domain/storage rules; `src/web/` the app; `src/agent-context/` and `src/mcp/` the context bridge; `src/decision-guard/` extraction/review staging; `src/evaluation/` and `src/benchmark/` experiments; `src/scripts/` CLI commands; `migrations/` ordered schema changes; `test/` isolated tests.
 
-See [CONTRIBUTING.md](CONTRIBUTING.md) (pull requests require the [contributor license agreement](CLA.md)), [SECURITY.md](SECURITY.md), and [third-party notices](THIRD_PARTY_NOTICES.md). Copyright 2026 Viraj Sabhaya and the MemoryNet contributors. Licensed under [Apache-2.0](LICENSE); see [NOTICE](NOTICE).
+See [SECURITY.md](SECURITY.md) and [third-party notices](THIRD_PARTY_NOTICES.md). Copyright 2026 Viraj Sabhaya and the MemoryNet contributors. Licensed under [Apache-2.0](LICENSE); see [NOTICE](NOTICE).

@@ -1,6 +1,6 @@
 {
     "name": "memorynet",
-    "version": "0.1.0",
+    "version": "0.2.0",
     "private": true,
     "description": "Help AI coding agents use current, human-approved engineering decisions with cited evidence and stale-work detection.",
     "author": "MemoryNet contributors",
